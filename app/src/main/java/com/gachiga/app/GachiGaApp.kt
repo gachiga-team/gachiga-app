@@ -2,7 +2,7 @@ package com.gachiga.app
 
 import android.app.Application
 
-class GachigaApp : Application() {
+class GachiGaApp : Application() {
     lateinit var container: AppContainer
         private set
 

@@ -129,7 +129,10 @@ private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPar
 private fun IdleScreen(state: HomeUiState, settings: VehicleSettings, vm: HomeViewModel) {
     Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         if (state.demoMode) DemoBadge()
-        Text("같이가", style = MaterialTheme.typography.headlineMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Bottom) {
+            Text("같이가", style = MaterialTheme.typography.headlineMedium)
+            Text("달린 만큼 나누는 그룹 여행", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        }
         if (!state.vehicleChecked) {
             Text("차량 정보를 확인하는 중이에요…", style = MaterialTheme.typography.bodyLarge)
             OutlinedButton(onClick = vm::onSettingsClick, modifier = Modifier.height(CarDimens.buttonHeight)) {

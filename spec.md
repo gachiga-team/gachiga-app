@@ -44,7 +44,7 @@
 | DI | 수동 DI (`AppContainer`) | 범위가 작아 Hilt는 쓰지 않는다 |
 | 차량 SDK | `ai.pleos.playground:Vehicle:2.3.2` | 저장소: `https://nexus-playground.pleos.ai/repository/maven-releases/` |
 | 음성 SDK | `ai.pleos.playground:SpeechToText:3.3.1`, `ai.pleos.playground:TextToSpeech:3.3.1` | Vehicle과 같은 저장소. ON_DEVICE 모드라 앱 등록(Client ID/Secret)은 쓰지 않는다 |
-| 패키지명 | `com.gachiga.app` (가칭) | 앱 이름이 확정되면 바꾼다 |
+| 앱 이름·패키지명 | 같이가 (GachiGa), `com.gachiga.app` | 2026-11-11 확정. 부제 "달린 만큼 나누는 그룹 여행" |
 
 ---
 
@@ -314,10 +314,9 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 <uses-permission android:name="pleos.car.permission.CAR_ENERGY" />  <!-- Fuel, EvBattery -->
 <uses-permission android:name="pleos.car.permission.STT_SERVICE" /> <!-- SpeechToText -->
 <uses-permission android:name="pleos.car.permission.TTS_SERVICE" /> <!-- TextToSpeech -->
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <!-- 기어는 CAR_DRIVE로 읽으므로 CAR_SPEED·CAR_POWERTRAIN은 필요 없다. 녹음은 Pleos 음성 서비스가 하므로 RECORD_AUDIO도 없다 -->
 ```
-- `FOREGROUND_SERVICE`는 지금 쓰지 않는다(3절). 제출 전에 빼는 것을 검토한다.
+- `FOREGROUND_SERVICE`는 쓰지 않으므로 선언하지 않는다(3절). 2단계에서 포그라운드 서비스를 쓰게 되면 그때 추가한다.
 
 - 승인되지 않은 권한은 넣지 않는다(App Market 심사 반려 사유). `CAR_TOLL`은 쓸 API가 없으므로 넣지 않는다.
 
@@ -358,7 +357,7 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 | ~~1~~ | ~~**F9 차량 설정 화면**~~ | **완료 (11/11)** | |
 | ~~2~~ | ~~**F6 정산 화면 다듬기**~~ | **완료 (11/11)** | |
 | 3 | **화면 다듬기**: 차량 화면 기준 글자 크기 (로딩 상태 분리는 F9와 함께 완료) | 심사위원이 영상에서 보는 첫인상 | 11/13 |
-| 4 | **release APK**: 서명 키 만들기, release 빌드, `apk/팀명_앱이름_release.apk`. 쓰지 않는 `FOREGROUND_SERVICE` 권한 빼기 | 제출 필수 (가산점) | 11/13 |
+| ~~4~~ | ~~**release APK**~~ | **완료 (11/11)**: `apk/TeamGachiGa_GachiGa_release.apk`, 에뮬레이터 설치·실행 확인. 팀명이 정해지면 파일 이름만 바꾼다 | |
 | 5 | **시연 영상**: 8절 시나리오를 Virtual Console API 스크립트로 자동 재생하고 `adb screenrecord`로 녹화 | 제출 가산점. 스크립트로 하면 다시 찍기 쉽다 | 11/13~14 |
 | 6 | **음성 직접 확인**(V4 남은 부분): 사람이 말한 명령이 인식되는지 | 차량특화성의 핵심. 안 되면 영상에서는 터치로 대체 | 11/12까지 |
 | 7 | **GitHub 올리기**: 저장소 만들기, push, (비공개면) 심사용 계정 초대와 접근 확인 | 제출 | 11/14 |
@@ -367,7 +366,8 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 
 ### 사람이 정해야 하는 것
 
-- **앱 이름과 팀명**: APK 파일 이름(`팀명_앱이름_release.apk`)과 패키지명(`com.gachiga.app`, 가칭)에 들어간다. 패키지명은 나중에 바꾸면 설치가 새 앱으로 취급된다.
+- ~~앱 이름~~: **같이가 (GachiGa)로 확정 (11/11).** 패키지명 `com.gachiga.app`.
+- **팀명**: APK 파일 이름(`팀명_앱이름_release.apk`)에 들어간다. 정해질 때까지 `TeamGachiGa`를 임시로 쓴다. 파일 이름만 바꾸면 되고 다시 빌드할 필요는 없다.
 - **GitHub 공개 여부**: 비공개면 공지된 심사용 계정을 초대해야 한다.
 - **송금 링크**: 1단계에서는 넣지 않는다(정산 금액만 보여 줌). 2단계 QR 정산서에서 데모로 보여 줄지 정한다.
 
@@ -411,6 +411,7 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 ## 12. 빌드·제출
 
 - release 빌드는 별도 keystore로 서명한다. keystore와 비밀번호는 저장소에 올리지 않는다(`.gitignore`에 `*.jks`, `*.keystore` 이미 있음). 서명 정보는 `local.properties` 또는 환경 변수로 받는다.
-- APK 경로: `apk/팀명_앱이름_release.apk` (팀명과 앱 이름 확정 후).
+- APK 경로: `apk/TeamGachiGa_GachiGa_release.apk` (팀명 미정이라 임시 이름).
+- 서명 키는 저장소 밖(`~/.gachiga/gachiga-release.jks`)에 있고, 비밀번호는 `local.properties`에만 있다. **키를 잃으면 같은 앱으로 업데이트할 수 없으니 팀 안에서 안전하게 백업한다.** 최종 APK(2027-02)도 같은 키로 서명해야 한다.
 - README.md: 앱 이름과 한 줄 소개, 실행 방법, 테스트 환경(Pleos Connect Emulator v2.1.0, API 34), 필요한 설정, APK 위치.
 - 저장소, 커밋, README, 영상에 팀원 실명과 연락처를 넣지 않는다. 커밋 작성자 이름과 이메일도 익명 계정으로 설정한다.

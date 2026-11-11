@@ -6,14 +6,14 @@ import androidx.activity.compose.setContent
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gachiga.app.ui.home.HomeScreen
 import com.gachiga.app.ui.home.HomeViewModel
-import com.gachiga.app.ui.theme.GachigaTheme
+import com.gachiga.app.ui.theme.GachiGaTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val container = (application as GachigaApp).container
+        val container = (application as GachiGaApp).container
         setContent {
-            GachigaTheme {
+            GachiGaTheme {
                 val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(container))
                 HomeScreen(vm)
             }

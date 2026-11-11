@@ -31,6 +31,6 @@ private val CarTypography = Typography(
 )
 
 @Composable
-fun GachigaTheme(content: @Composable () -> Unit) {
+fun GachiGaTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = CarColors, typography = CarTypography, content = content)
 }

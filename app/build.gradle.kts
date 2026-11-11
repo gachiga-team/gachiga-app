@@ -20,7 +20,7 @@ android {
     compileSdk = 37 // 최신 AndroidX 요구. 실행 대상(targetSdk)은 Pleos 에뮬레이터와 같은 34
 
     defaultConfig {
-        applicationId = "com.gachiga.app" // 가칭. 앱 이름 확정 후 변경
+        applicationId = "com.gachiga.app" // 같이가 (GachiGa)
         minSdk = 28                       // 차량 보안 요건
         targetSdk = 34
         versionCode = 1

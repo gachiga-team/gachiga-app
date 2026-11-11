@@ -1,4 +1,6 @@
-# 같이가 (GachiGa, 가칭)
+# 같이가 (GachiGa)
+
+> 달린 만큼 나누는 그룹 여행
 
 '여행 시작' 한마디로 일행 차량을 하나의 여행으로 묶고, 여행이 끝나면 **차량이 직접 측정한 주행거리와 연료·배터리 데이터**로 비용을 자동 정산해 주는 그룹 로드트립 차량 앱.
 
@@ -138,5 +140,8 @@
 
 ## APK
 
-- 위치: `apk/팀명_앱이름_release.apk` (1차 접수 전에 추가 예정)
+- 위치: [`apk/TeamGachiGa_GachiGa_release.apk`](apk/TeamGachiGa_GachiGa_release.apk) (v0.1.0, release 서명, 약 47MB)
+- 설치: Pleos 에뮬레이터를 켠 뒤 APK 파일을 에뮬레이터 창에 끌어다 놓거나, `adb install apk/TeamGachiGa_GachiGa_release.apk`
+  - 같은 패키지의 debug 빌드가 이미 깔려 있으면 서명이 달라 설치가 거부된다. 먼저 `adb uninstall com.gachiga.app`
+- 팀명이 정해지면 파일 이름만 바꾼다 (다시 빌드할 필요 없음).
 - release 서명 정보는 저장소에 올리지 않는다. `local.properties` 또는 환경 변수 `GACHIGA_STORE_FILE`, `GACHIGA_STORE_PASSWORD`, `GACHIGA_KEY_ALIAS`, `GACHIGA_KEY_PASSWORD`로 지정한다.
