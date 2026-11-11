@@ -27,6 +27,11 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+
+        // QR 정산서 웹 페이지 주소 (N5). GitHub Pages 주소가 정해지면 gradle.properties의 gachiga.settleUrl에 넣는다.
+        // 비어 있으면 QR에 정산 내용을 글자로 담는다.
+        val settleUrl = (project.findProperty("gachiga.settleUrl") as String?).orEmpty()
+        buildConfigField("String", "SETTLE_URL", "\"$settleUrl\"")
     }
 
     signingConfigs {
@@ -83,6 +88,9 @@ dependencies {
     implementation(libs.pleos.stt)
     implementation(libs.pleos.tts)
     implementation(libs.pleos.navi) // 내비 연동: 예상 통행료, 출발·도착, 도착 배터리 (spec.md 9절 N1~N3)
+
+    // QR 정산서 그림 (N5). 순수 Java 라이브러리, Apache 2.0
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
 }

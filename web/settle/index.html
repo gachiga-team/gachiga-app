@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>같이가 정산서</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --text: #14181d; --sub: #5b6672; --line: #e3e7ec;
+    --accent: #0277bd; --warn: #b26a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #101418; --card: #1a2026; --text: #eef2f5; --sub: #9aa4ae; --line: #2a323a; --accent: #4fc3f7; --warn: #ffb74d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+  .brand { color: var(--sub); font-size: 14px; }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  .period { color: var(--sub); font-size: 14px; }
+  .card { background: var(--card); border-radius: 16px; padding: 18px; margin-top: 16px; }
+  .big { font-size: 34px; font-weight: 700; color: var(--accent); margin: 4px 0; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .row:first-of-type { border-top: none; }
+  .row .basis { display: block; color: var(--sub); font-size: 13px; }
+  .row .amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .total { font-weight: 700; }
+  button { margin-top: 14px; width: 100%; min-height: 48px; border: 0; border-radius: 12px;
+           background: var(--accent); color: #fff; font-size: 16px; font-weight: 600; }
+  .note { color: var(--sub); font-size: 13px; margin-top: 18px; }
+  .error { color: var(--warn); }
+</style>
+</head>
+<body>
+<main id="app">
+  <div class="brand">같이가 · 달린 만큼 나누는 그룹 여행</div>
+  <p class="error" id="error" hidden>정산서 내용을 읽지 못했어요. 차에서 QR을 다시 찍어 주세요.</p>
+</main>
+<script>
+// QR 주소의 # 뒤에 담긴 정산 내용(JSON → UTF-8 → base64url)을 풀어 보여 준다.
+// # 뒤는 서버로 전송되지 않으므로 이 페이지를 호스팅하는 곳에도 정산 내용이 남지 않는다.
+(function () {
+  var won = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+  var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  var row = function (label, amount, basis, cls) {
+    var r = el('div', 'row' + (cls ? ' ' + cls : ''));
+    var left = el('span', null, label);
+    if (basis) left.appendChild(el('span', 'basis', basis));
+    r.appendChild(left);
+    r.appendChild(el('span', 'amt', amount));
+    return r;
+  };
+
+  var s;
+  try {
+    var b64 = location.hash.slice(1).replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    var bytes = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+    s = JSON.parse(new TextDecoder('utf-8').decode(bytes));
+    if (s.v !== 1) throw new Error('version');
+  } catch (e) {
+    document.getElementById('error').hidden = false;
+    return;
+  }
+
+  var app = document.getElementById('app');
+  app.appendChild(el('h1', null, s.t + ' 정산'));
+  app.appendChild(el('div', 'period', s.d + ' · ' + s.n + '명'));
+
+  var head = el('div', 'card');
+  if (s.n > 1) {
+    head.appendChild(el('div', null, '동승자 1명당 운전자에게'));
+    head.appendChild(el('div', 'big', won(s.pp)));
+    head.appendChild(el('div', 'basis', '운전자 부담 ' + won(s.ds) + ' (10원 미만 나머지 포함)'));
+    var copy = el('button', null, '금액 복사');
+    copy.onclick = function () {
+      navigator.clipboard && navigator.clipboard.writeText(String(s.pp)).then(function () { copy.textContent = '복사했어요'; });
+    };
+    head.appendChild(copy);
+  } else {
+    head.appendChild(el('div', null, '총비용'));
+    head.appendChild(el('div', 'big', won(s.tc)));
+  }
+  app.appendChild(head);
+
+  var detail = el('div', 'card');
+  detail.appendChild(row('이동 거리', s.km.toFixed(1) + ' km', '차량 측정'));
+  detail.appendChild(row(s.el + ' 사용', s.eu.toFixed(1) + ' ' + s.u, '차량 측정'));
+  detail.appendChild(row('단가', won(s.up) + '/' + s.u, s.pb));
+  detail.appendChild(row(s.el + ' 비용', won(s.ec)));
+  (s.x || []).forEach(function (it) { detail.appendChild(row(it[0], won(it[1]))); });
+  detail.appendChild(row('총비용', won(s.tc), null, 'total'));
+  app.appendChild(detail);
+
+  app.appendChild(el('p', 'note',
+    '거리와 배터리·연료 사용량은 차량이 직접 측정한 값이에요. 주유·충전한 금액이 아니라 이번 여행에서 쓴 만큼만 나눠요.'));
+})();
+</script>
+</body>
+</html>

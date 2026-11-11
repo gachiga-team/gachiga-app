@@ -132,6 +132,22 @@ fun MessageDialog(text: String, onDismiss: () -> Unit) {
     )
 }
 
+/** QR 정산서 (N5). 정차 중 정산 화면에서만 연다. */
+@Composable
+fun QrDialog(content: String, isWebLink: Boolean, onDismiss: () -> Unit) {
+    CarDialog(onDismiss) {
+        Text("QR 정산서", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            if (isWebLink) "동승자가 폰 카메라로 찍으면 정산서가 열려요." else "동승자가 폰 카메라로 찍으면 정산 내용이 글로 보여요.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        QrCode(content)
+        Button(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) {
+            Text("닫기", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
 @Composable
 private fun CarDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {

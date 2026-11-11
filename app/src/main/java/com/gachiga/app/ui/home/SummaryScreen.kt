@@ -18,15 +18,21 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.gachiga.app.BuildConfig
 import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.TripDetail
 import com.gachiga.app.domain.InputMethod
 import com.gachiga.app.domain.MonthlyReport
 import com.gachiga.app.domain.Settlement
+import com.gachiga.app.domain.SettlementShare
 import com.gachiga.app.ui.theme.CarDimens
 import com.gachiga.app.ui.theme.SubtleText
 import java.text.SimpleDateFormat
@@ -72,9 +78,18 @@ fun SummaryScreen(
         } else {
             Text("혼자 한 여행 · 총비용 ${won(r.totalCostWon)}", style = MaterialTheme.typography.displayMedium)
         }
+        // N5: 동승자 폰으로 넘기는 QR 정산서
+        var showQr by remember { mutableStateOf(false) }
         ButtonRow {
-            Text("인원 ${trip.headcount}명 (운전자 포함)", style = MaterialTheme.typography.bodyLarge)
-            OutlinedButton(onClick = onHeadcountClick, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("인원 고치기") }
+            Button(onClick = { showQr = true }, modifier = Modifier.heightIn(min = CarDimens.touch)) {
+                Text("QR 정산서", style = MaterialTheme.typography.labelLarge)
+            }
+            SecondaryButton("인원 고치기 (${trip.headcount}명)", onHeadcountClick)
+        }
+        if (showQr) {
+            val sheet = shareSheet(detail, priceBasis)
+            val url = SettlementShare.url(BuildConfig.SETTLE_URL, sheet)
+            QrDialog(content = url ?: SettlementShare.plainText(sheet), isWebLink = url != null, onDismiss = { showQr = false })
         }
         HorizontalDivider()
 
@@ -146,6 +161,29 @@ fun HistoryScreen(trips: List<TripDetail>, onItemClick: (TripDetail) -> Unit, on
             }
         }
     }
+}
+
+/** QR 정산서에 담을 내용 (N5). 화면과 같은 숫자와 근거를 쓴다. */
+private fun shareSheet(detail: TripDetail, priceBasis: String): SettlementShare.Sheet {
+    val trip = detail.trip
+    val r = detail.result
+    return SettlementShare.Sheet(
+        title = tripTitle(trip.destinationName),
+        period = dateRange(trip.startedAt, trip.endedAt),
+        headcount = trip.headcount,
+        distanceKm = r.distanceKm,
+        energyLabel = trip.energyType.label(),
+        energyUsed = r.energyUsed,
+        unit = trip.energyType.unit(),
+        unitPrice = r.unitPrice,
+        priceBasis = priceBasis,
+        energyCostWon = r.energyCostWon,
+        otherCostWon = r.otherCostWon,
+        totalCostWon = r.totalCostWon,
+        perPersonWon = r.perPersonWon,
+        driverShareWon = r.driverShareWon,
+        items = detail.expenses.map { it.label() to it.amountWon.toLong() },
+    )
 }
 
 /** 월간 리포트 (spec.md 9절 N6). 그룹 여행이 없는 평소에도 볼 거리를 준다. */

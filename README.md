@@ -17,7 +17,10 @@
 | 충전·주유 감지 | 정차 중 배터리(연료)가 3%p 이상 오르면 30초 뒤 1건으로 감지하고 금액을 묻는다 |
 | 비용 입력 | 통행료·주차비·기타 비용을 정차 중에 입력한다 |
 | 정산 | 쓴 만큼의 에너지 비용 + 기타 비용을 인원수로 나누고, 동승자가 운전자에게 보낼 금액을 근거와 함께 보여 준다 |
-| 지난 여행 | 끝난 여행 목록. 나중에 충전·주유 금액이나 인원을 고치면 정산을 다시 계산한다 |
+| 지난 여행 | 끝난 여행 목록과 이번 달 리포트. 나중에 충전·주유 금액이나 인원을 고치면 정산을 다시 계산한다 |
+| 내비 연동 | 내비 경로의 예상 통행료를 자동 기록, 출발 때 여행 시작 제안, 도착 때 종료 제안, 도착 배터리 부족 경고 |
+| QR 정산서 | 동승자가 폰으로 찍으면 모바일 웹 정산서가 열린다 (서버 없음) |
+| 휴식 안내 | 2시간 연속 운전하면 음성으로 휴식을 권한다 |
 | 주행 중 잠금 | 기어가 P가 아니면 한 줄 정보와 말하기 버튼만 보이고, 터치 입력을 막는다 |
 | 음성 | "여행 시작, 3명", "통행료 사천팔백 원", "여행 종료" 같은 말을 알아듣고 결과를 음성으로 알려 준다 |
 | 데모 모드 | Virtual Console 없이 앱 안 버튼으로 주행·정차·충전을 흉내 낸다 (화면에 "데모 모드" 표시) |
@@ -30,8 +33,8 @@
 | 차량 데이터 | Pleos Connect Virtual Console, 또는 앱 안의 데모 모드 |
 | 빌드 | Android Studio 2026.2 (번들 JDK 25), Gradle 9.6.0, AGP 9.5.1, Kotlin 2.4.21 |
 | SDK 버전 | minSdk 28, targetSdk 34, compileSdk 37 |
-| 사용 SDK | Pleos Connect Vehicle 2.3.2 (Odometer, Fuel, EvBattery, Gear), SpeechToText·TextToSpeech 3.3.1 (ON_DEVICE) |
-| 권한 | `pleos.car.permission.CAR_DRIVE`, `CAR_ENERGY`, `STT_SERVICE`, `TTS_SERVICE` |
+| 사용 SDK | Pleos Connect Vehicle 2.3.2 (Odometer, Fuel, EvBattery, Gear), SpeechToText·TextToSpeech 3.3.1 (ON_DEVICE), NaviHelper 3.0.5, Android CarUxRestrictions |
+| 권한 | `pleos.car.permission.CAR_DRIVE`, `CAR_ENERGY`, `STT_SERVICE`, `TTS_SERVICE`, `NAVI_ROUTE` (debug 빌드만 `NAVI_ROUTE_SEARCH` 추가) |
 
 ---
 
@@ -139,6 +142,15 @@
 | 데모 모드 버튼이 없음 | 차량 설정 화면 아래쪽으로 옮겼다 (여행 중에는 숨김) |
 
 ---
+
+## QR 정산서 웹 페이지
+
+정산 화면의 **QR 정산서**를 동승자가 폰으로 찍으면 [`web/settle/index.html`](web/settle/index.html)이 열린다. 서버는 없고, 정산 내용은 주소의 `#` 뒤에 담긴다.
+
+웹 페이지를 켜는 방법:
+1. GitHub 저장소 Settings → Pages → Branch `main`, 폴더 `/ (root)`로 저장한다.
+2. `gradle.properties`에 주소를 넣는다: `gachiga.settleUrl=https://<계정>.github.io/<저장소>/web/settle/`
+3. 다시 빌드한다. 주소가 비어 있으면 QR에 정산 내용을 글자로 담는다 (폰 카메라로 찍으면 글로 보인다).
 
 ## APK
 
