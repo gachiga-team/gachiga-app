@@ -3,6 +3,7 @@ package com.gachiga.app
 import android.content.Context
 import com.gachiga.app.data.settings.VehicleSettingsRepository
 import com.gachiga.app.data.trip.AppDatabase
+import com.gachiga.app.data.trip.TripHistory
 import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.DemoVehicleDataSource
 import com.gachiga.app.data.vehicle.PleosVehicleDataSource
@@ -32,6 +33,8 @@ class AppContainer(context: Context) {
 
     fun vehicleSource(demoMode: Boolean): VehicleDataSource =
         if (demoMode) demoVehicle else pleosVehicle
+
+    val history: TripHistory by lazy { TripHistory(database.tripDao()) }
 
     val recorder: TripRecorder by lazy {
         TripRecorder(database.tripDao(), settings, ::vehicleSource, appScope)

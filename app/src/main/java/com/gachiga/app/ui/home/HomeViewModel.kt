@@ -7,7 +7,7 @@ import com.gachiga.app.AppContainer
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
 import com.gachiga.app.data.trip.Refuel
-import com.gachiga.app.data.trip.Trip
+import com.gachiga.app.data.trip.TripDetail
 import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.VehicleCapabilities
 import com.gachiga.app.data.voice.VoiceIO
@@ -59,9 +59,11 @@ sealed interface Overlay {
     data class RefuelAmount(val refuel: Refuel) : Overlay
     data object ConfirmEnd : Overlay
     data class Message(val text: String) : Overlay
+    /** F6: 끝난 여행의 주유·충전 금액 고치기 */
+    data class EndedRefuelAmount(val tripId: Long, val refuel: Refuel) : Overlay
+    /** F6: 끝난 여행의 인원 고치기 */
+    data class EndedHeadcount(val tripId: Long) : Overlay
 }
-
-data class TripSummary(val trip: Trip, val result: Settlement.Result)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(private val container: AppContainer) : ViewModel() {
@@ -101,8 +103,39 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val _overlay = MutableStateFlow<Overlay?>(null)
     val overlay: StateFlow<Overlay?> = _overlay.asStateFlow()
 
-    private val _summary = MutableStateFlow<TripSummary?>(null)
-    val summary: StateFlow<TripSummary?> = _summary.asStateFlow()
+    /** 정산 화면에 띄운 여행 (방금 끝낸 여행이거나 지난 여행 목록에서 고른 여행). */
+    private val _summary = MutableStateFlow<TripDetail?>(null)
+    val summary: StateFlow<TripDetail?> = _summary.asStateFlow()
+
+    /** 지난 여행 목록. null이면 닫혀 있다. */
+    private val _history = MutableStateFlow<List<TripDetail>?>(null)
+    val history: StateFlow<List<TripDetail>?> = _history.asStateFlow()
+
+    // ---- 지난 여행과 정산 수정 (F6) ----
+
+    fun onHistoryClick() { viewModelScope.launch { _history.value = container.history.endedTrips() } }
+    fun dismissHistory() { _history.value = null }
+    fun onHistoryItemClick(detail: TripDetail) { _summary.value = detail }
+
+    fun onEndedRefuelClick(refuel: Refuel) {
+        val tripId = _summary.value?.trip?.id ?: return
+        _overlay.value = Overlay.EndedRefuelAmount(tripId, refuel)
+    }
+
+    fun onEndedRefuelAmountEntered(tripId: Long, refuelId: Long, amountWon: Int) {
+        _overlay.value = null
+        viewModelScope.launch { _summary.value = container.history.setRefuelAmount(tripId, refuelId, amountWon) }
+    }
+
+    fun onEndedHeadcountClick() {
+        val tripId = _summary.value?.trip?.id ?: return
+        _overlay.value = Overlay.EndedHeadcount(tripId)
+    }
+
+    fun onEndedHeadcountChosen(tripId: Long, headcount: Int) {
+        _overlay.value = null
+        viewModelScope.launch { _summary.value = container.history.setHeadcount(tripId, headcount) }
+    }
 
     // ---- 차량 설정 (F9) ----
 
@@ -246,7 +279,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             _overlay.value = Overlay.Message("여행은 정차 중(기어 P)에만 끝낼 수 있어요.")
             return
         }
-        val summary = recorder.summary(tripId)?.let { (trip, result) -> TripSummary(trip, result) } ?: return
+        val summary = container.history.detail(tripId) ?: return
         _summary.value = summary
         val r = summary.result
         val distance = "총 %.0f킬로미터를 달렸어요.".format(r.distanceKm)
@@ -303,7 +336,11 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun dismissOverlay() { _overlay.value = null }
-    fun dismissSummary() { _summary.value = null }
+    fun dismissSummary() {
+        _summary.value = null
+        // 목록에서 열었으면 고친 내용이 목록에도 보이도록 다시 읽는다.
+        if (_history.value != null) onHistoryClick()
+    }
 
     // ---- 데모 모드 (F10) ----
 

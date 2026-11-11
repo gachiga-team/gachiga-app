@@ -31,6 +31,7 @@ fun HomeScreen(vm: HomeViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val overlay by vm.overlay.collectAsStateWithLifecycle()
     val summary by vm.summary.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
     val settingsOpen by vm.settingsOpen.collectAsStateWithLifecycle()
     val vehicleSettings by vm.vehicleSettings.collectAsStateWithLifecycle()
 
@@ -52,7 +53,13 @@ fun HomeScreen(vm: HomeViewModel) {
                 onSave = vm::onSettingsSaved,
                 onCancel = vm::onSettingsCancelled,
             )
-            currentSummary != null -> SummaryScreen(currentSummary, onDone = vm::dismissSummary)
+            currentSummary != null -> SummaryScreen(
+                detail = currentSummary,
+                onRefuelClick = vm::onEndedRefuelClick,
+                onHeadcountClick = vm::onEndedHeadcountClick,
+                onDone = vm::dismissSummary,
+            )
+            history != null -> HistoryScreen(history!!, onItemClick = vm::onHistoryItemClick, onBack = vm::dismissHistory)
             state.live != null -> TripScreen(state, state.live!!, vm)
             else -> IdleScreen(state, vehicleSettings, vm)
         }
@@ -82,6 +89,18 @@ fun HomeScreen(vm: HomeViewModel) {
             }
             Overlay.ConfirmEnd -> ConfirmEndDialog(onConfirm = vm::onEndConfirmed, onDismiss = vm::dismissOverlay)
             is Overlay.Message -> MessageDialog(o.text, onDismiss = vm::dismissOverlay)
+            is Overlay.EndedRefuelAmount -> AmountDialog(
+                title = "${state.energyType.refuelWord()} 금액",
+                subtitle = "%.0f%% → %.0f%%".format(o.refuel.percentBefore, o.refuel.percentAfter),
+                showCategories = false,
+                dismissLabel = "취소",
+                onConfirm = { _, amount -> vm.onEndedRefuelAmountEntered(o.tripId, o.refuel.id, amount) },
+                onDismiss = vm::dismissOverlay,
+            )
+            is Overlay.EndedHeadcount -> HeadcountDialog(
+                onChosen = { n -> vm.onEndedHeadcountChosen(o.tripId, n) },
+                onDismiss = vm::dismissOverlay,
+            )
         }
     }
 }
@@ -146,6 +165,9 @@ private fun IdleScreen(state: HomeUiState, settings: VehicleSettings, vm: HomeVi
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OutlinedButton(onClick = vm::onHistoryClick, modifier = Modifier.height(CarDimens.buttonHeight)) {
+                Text("지난 여행")
+            }
             OutlinedButton(onClick = vm::onSettingsClick, modifier = Modifier.height(CarDimens.buttonHeight)) {
                 Text("차량 설정")
             }

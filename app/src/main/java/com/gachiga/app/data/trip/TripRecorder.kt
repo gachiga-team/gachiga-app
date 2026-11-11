@@ -190,12 +190,6 @@ class TripRecorder(
         _live.value = live.copy(refuels = live.refuels.map { if (it.id == refuelId) updated else it })
     }
 
-    /** 끝난 여행의 정산 결과 (F6 화면에서 쓴다). */
-    suspend fun summary(tripId: Long): Pair<Trip, Settlement.Result>? {
-        val trip = dao.tripById(tripId) ?: return null
-        return trip to settlementOf(trip, dao.segments(tripId), dao.refuels(tripId), dao.expenses(tripId))
-    }
-
     // ---- 기록 ----
 
     private sealed interface Event {
