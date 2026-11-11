@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -33,7 +34,7 @@ fun HomeScreen(vm: HomeViewModel) {
         // F7: 주행 중(또는 판별 불가)이면 한 줄 정보만 보여 주고 입력 UI와 대화상자를 모두 숨긴다.
         // 차량 값을 하나도 읽지 못하면 기록할 것이 없으므로 잠그지 않는다 (spec.md 3.2-4).
         if (state.locked) {
-            DrivingModeScreen(state, onDemoPark = vm::demoPark)
+            DrivingModeScreen(state, onClick = vm::onVoiceClick, onDemoPark = vm::demoPark)
             return@Surface
         }
 
@@ -74,7 +75,7 @@ fun HomeScreen(vm: HomeViewModel) {
 }
 
 @Composable
-private fun DrivingModeScreen(state: HomeUiState, onDemoPark: () -> Unit) {
+private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPark: () -> Unit) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -82,6 +83,8 @@ private fun DrivingModeScreen(state: HomeUiState, onDemoPark: () -> Unit) {
         ) {
             if (state.demoMode) DemoBadge()
             Text(drivingLine(state), style = MaterialTheme.typography.displayMedium)
+            // F7: 주행 중 입력은 음성 버튼 하나뿐이다.
+            TalkButton(state, onClick)
             // 데모 모드에서만: 차량 동작(정차)을 흉내 내는 버튼. 실제 차량에서는 보이지 않는다.
             if (state.demoMode) {
                 OutlinedButton(onClick = onDemoPark, Modifier.height(CarDimens.buttonHeight)) { Text("정차 (데모)") }
@@ -105,11 +108,14 @@ private fun IdleScreen(state: HomeUiState, vm: HomeViewModel) {
             )
         }
 
-        Button(
-            onClick = vm::onStartClick,
-            enabled = state.capabilities.canRecordTrip, // spec.md 3.2-4: 값을 못 읽으면 기록 기능은 막는다
-            modifier = Modifier.height(CarDimens.buttonHeight),
-        ) { Text("여행 시작", style = MaterialTheme.typography.labelLarge) }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Button(
+                onClick = vm::onStartClick,
+                enabled = state.capabilities.canRecordTrip, // spec.md 3.2-4: 값을 못 읽으면 기록 기능은 막는다
+                modifier = Modifier.height(CarDimens.buttonHeight),
+            ) { Text("여행 시작", style = MaterialTheme.typography.labelLarge) }
+            if (state.capabilities.canRecordTrip) TalkButton(state, vm::onVoiceClick)
+        }
 
         OutlinedButton(
             onClick = { vm.setDemoMode(!state.demoMode) },
@@ -153,6 +159,7 @@ private fun TripScreen(state: HomeUiState, live: LiveTrip, vm: HomeViewModel) {
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            TalkButton(state, vm::onVoiceClick)
             Button(onClick = vm::onExpenseClick, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("비용 추가") }
             if (unpaid > 0) {
                 Button(onClick = vm::onUnpaidRefuelClick, modifier = Modifier.height(CarDimens.buttonHeight)) {
@@ -182,6 +189,18 @@ private fun DemoPanel(vm: HomeViewModel) {
         Button(onClick = { vm.demoAddEnergy(50.0) }, Modifier.height(CarDimens.buttonHeight)) { Text("주유 +50%") }
         Button(onClick = { vm.demoAddEnergy(40.0) }, Modifier.height(CarDimens.buttonHeight)) { Text("충전 +40%") }
     }
+}
+
+/** F8 말하기 버튼. 음성 인식을 못 쓰면 보이지 않는다(터치로 대체). */
+@Composable
+private fun TalkButton(state: HomeUiState, onClick: () -> Unit) {
+    if (!state.canListen) return
+    Button(
+        onClick = onClick,
+        enabled = !state.listening,
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+        modifier = Modifier.height(CarDimens.buttonHeight),
+    ) { Text(if (state.listening) "듣고 있어요…" else "말하기", style = MaterialTheme.typography.labelLarge) }
 }
 
 @Composable

@@ -75,8 +75,10 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
 
-    // Pleos Connect Vehicle SDK (spec.md 3.1). STT·TTS 좌표는 V4 확인 후 추가한다.
+    // Pleos Connect SDK: Vehicle (spec.md 3.1), SpeechToText·TextToSpeech (F8, ON_DEVICE 모드)
     implementation(libs.pleos.vehicle)
+    implementation(libs.pleos.stt)
+    implementation(libs.pleos.tts)
 
     testImplementation(libs.junit)
 }

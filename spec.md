@@ -43,7 +43,7 @@
 | 비동기 | Kotlin Coroutines, Flow | SDK 콜백은 `callbackFlow`로 감싼다 |
 | DI | 수동 DI (`AppContainer`) | 범위가 작아 Hilt는 쓰지 않는다 |
 | 차량 SDK | `ai.pleos.playground:Vehicle:2.3.2` | 저장소: `https://nexus-playground.pleos.ai/repository/maven-releases/` |
-| 음성 SDK | Pleos SpeechToText(v3.3.1 문서 기준), TextToSpeech | **[확인 필요]** Gradle 좌표. 각 SDK의 "가져오기" 문서 확인 |
+| 음성 SDK | `ai.pleos.playground:SpeechToText:3.3.1`, `ai.pleos.playground:TextToSpeech:3.3.1` | Vehicle과 같은 저장소. ON_DEVICE 모드라 앱 등록(Client ID/Secret)은 쓰지 않는다 |
 | 패키지명 | `com.gachiga.app` (가칭) | 앱 이름이 확정되면 바꾼다 |
 
 ---
@@ -239,12 +239,17 @@ data class VehicleCapabilities(
 - **완료 조건:** Virtual Console에서 기어를 D로(또는 주행거리를 계속 늘려) 주행 상태로 만들면 3초 안에 주행 모드 화면으로 바뀌고, 입력 UI가 사라진다.
 
 ### F8. 음성 입출력
-- 앱 시작 시 `SpeechToText(context, Mode.ON_DEVICE)`, `TextToSpeech(context, Mode.ON_DEVICE)`로 `initialize()`를 시도한다. 로캘은 `ko-KR`.
-- 초기화에 실패하거나 한국어를 지원하지 않으면 `NoopVoiceIO`로 바꾸고, 음성 버튼을 숨긴다. 기능은 모두 터치로 쓸 수 있어야 한다.
-- 1단계 음성 명령: "여행 시작(, N명)", "일시정지", "다시 시작", "여행 종료", 주유 금액 답변, "통행료/주차비 N원".
-- TTS 안내: 여행 시작 확인, 주유 감지 질문, 종료 요약("총 312km, 1인당 2만 4천 원").
+- 앱 시작 시 `SpeechToText(context, Mode.ON_DEVICE)`, `TextToSpeech(context, Mode.ON_DEVICE)`로 `initialize(OnInitializeListener)`를 부른다. 성공하면 로캘을 `ko-KR`로 둔다.
+- 초기화에 실패하면 말하기 버튼을 숨긴다. 기능은 모두 터치로 쓸 수 있어야 한다.
+- **권한:** `pleos.car.permission.STT_SERVICE`, `pleos.car.permission.TTS_SERVICE`가 필요하다(없으면 `initialize()`가 `SecurityException`). 문서에는 없고 SDK에서 확인했다. 녹음은 Pleos 음성 서비스(`ai.pleos.playground.caas`)가 하므로 `RECORD_AUDIO`는 선언하지 않는다. SDK가 `INTERNET`을 자동으로 합친다.
+- **듣기 흐름 (에뮬레이터 확인):** `request()` → `onReady` → (말함) → `onEndedRecognition` → `onUpdated(최종 문장, true)`. 말 끝남이 최종 문장보다 먼저 오므로 끝남 뒤 2.5초 동안 최종 문장을 기다린다. 첫 사용 때는 `onReady`까지 8초 넘게 걸릴 수 있어서 준비 대기 12초 + 준비 후 10초를 상한으로 둔다.
+- **말하기:** `speak(text, isFinal = true)` → `onDone`까지 기다린 뒤 다음 동작(듣기 등)을 한다. 안내 음성을 다시 인식하지 않게 하기 위해서다.
+- 1단계 음성 명령(`VoiceCommand`): "여행 시작(, N명)", "일시정지", "다시 시작", "여행 종료"(→ "여행을 끝낼까요?" → "네"), "통행료/주차비 N원", 금액만("6만 원", 주유·충전 금액 답).
+  - 인원은 "4명", "세 명", "오명" 모두 읽는다. 1~9명 밖이거나 못 들으면 정차 중엔 인원 선택 화면, 주행 중엔 1명으로 시작한다.
+  - "오늘"의 '오'를 5로 읽지 않도록, 원·만·천·백·아라비아 숫자가 있을 때만 금액으로 본다.
+- TTS 안내: 여행 시작 확인("3명, 여행을 시작할게요."), 주유·충전 감지 질문, 비용 기록 확인, 종료 요약("총 72킬로미터를 달렸어요. 한 사람당 3,350원이에요.").
 - 명령 해석은 앱이 한다(STT SDK는 텍스트만 돌려주고 명령을 실행하지 않는다).
-- 마이크 권한(`RECORD_AUDIO`)이 필요할 수 있다. **[확인 필요]** STT SDK의 권한 선언 문서.
+- 말하기 버튼은 정차 화면과 주행 모드 화면 모두에 있다. 주행 중 유일한 입력이다(F7).
 
 ### F9. 차량 설정
 - 처음 실행할 때 한 번 보여 준다. 연료 종류(감지 결과를 기본 선택), 용량, 단가.
@@ -291,11 +296,14 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 
 ```xml
 <uses-feature android:name="android.hardware.type.automotive" android:required="true" />
-<uses-permission android:name="pleos.car.permission.CAR_DRIVE" />   <!-- Odometer -->
+<uses-permission android:name="pleos.car.permission.CAR_DRIVE" />   <!-- Odometer, Gear -->
 <uses-permission android:name="pleos.car.permission.CAR_ENERGY" />  <!-- Fuel, EvBattery -->
+<uses-permission android:name="pleos.car.permission.STT_SERVICE" /> <!-- SpeechToText -->
+<uses-permission android:name="pleos.car.permission.TTS_SERVICE" /> <!-- TextToSpeech -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<!-- 확인 후 추가: RECORD_AUDIO(STT). 기어는 CAR_DRIVE로 읽으므로 CAR_SPEED·CAR_POWERTRAIN은 필요 없다 -->
+<!-- 기어는 CAR_DRIVE로 읽으므로 CAR_SPEED·CAR_POWERTRAIN은 필요 없다. 녹음은 Pleos 음성 서비스가 하므로 RECORD_AUDIO도 없다 -->
 ```
+- `FOREGROUND_SERVICE`는 지금 쓰지 않는다(3절). 제출 전에 빼는 것을 검토한다.
 
 - 승인되지 않은 권한은 넣지 않는다(App Market 심사 반려 사유). `CAR_TOLL`은 쓸 API가 없으므로 넣지 않는다.
 
@@ -331,7 +339,7 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 2. SDK Manager → SDK Update Sites에 `Pleos Connect System Image` 추가: `https://nexus-playground.pleos.ai/repository/raw-releases/connect-avd/2.x/crp-sys-img.xml` (Windows)
 3. SDK Platforms → Show Package Details → API 34의 Pleos Connect 시스템 이미지 설치 → Android Studio 재시작.
 4. Device Manager → Create device → Automotive → `Pleos Connect v2.1.0` → RAM 4GB, Default boot `Cold` → API 34 `Pleos Connect v2.1.0 APIs`.
-5. 마이크 접근 설정(에뮬레이터 설정 문서).
+5. 마이크 접근 설정: 에뮬레이터가 PC 마이크를 쓰게 한다. Extended controls → Microphone → "Virtual microphone uses host audio input", 또는 `adb emu avd hostmicon`. 에뮬레이터를 다시 켜면 풀릴 수 있다.
 6. Virtual Console: 에뮬레이터 실행 후 `adb forward tcp:8088 tcp:8088` → 브라우저에서 `http://127.0.0.1:8088/`.
    - **페이지를 브라우저에 열어 둔 동안에만** 값 변경이 받아들여진다. 닫혀 있거나 탭이 백그라운드로 가면 `{"error":"emulator_inactive"}`(503)가 온다.
      페이지는 1초마다 `POST /browser/session?client=<id>`를 보낸다. 스크립트로 시연할 때는 이 요청을 대신 보내면 브라우저 없이도 쓸 수 있다.
@@ -350,7 +358,7 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 | V1 | Virtual Console에서 연료 %를 바꿀 수 있는가 | 3.1, 8 | **확인됨 (11/11): 안 된다.** 에뮬레이터 차량은 전기차라 `Fuel`이 `ERROR_NOT_SUPPORTED_PROPERTY`. 배터리 SoC는 바꿀 수 있다 → **시연은 전기차(충전)로 한다** |
 | V2 | Virtual Console의 주행거리 변경이 `getCurrentDistanceDriven`/`registerDistanceDriven`에 반영되는가, 단위는 km인가 | 3.1, F2 | **확인됨 (11/11):** 바로 반영되고 단위는 km. 배터리 SoC, 기어도 반영된다 |
 | V3 | 속도·기어를 읽을 수 있는가, 필요한 권한은 | 3.2, 7 | **확인됨 (11/11):** Pleos `Gear` 도메인으로 기어를 읽는다. 권한은 `CAR_DRIVE` |
-| V4 | STT·TTS `ON_DEVICE`가 에뮬레이터에서 한국어로 동작하는가, Gradle 좌표와 권한은 | F8, 2 | 터치 대체 |
+| V4 | STT·TTS `ON_DEVICE`가 에뮬레이터에서 한국어로 동작하는가, Gradle 좌표와 권한은 | F8, 2 | **일부 확인 (11/11):** 좌표·권한 확인, 둘 다 초기화 성공. TTS 한국어 재생 완료(onDone)까지 확인. STT는 PC 마이크의 주변 소리를 "제가"로 인식하는 것까지 확인. **사람이 말한 명령 문장 인식은 아직 확인 못 함** |
 | V5 | 주행 중 앱 Activity가 차단되는가 (`distractionOptimized` 필요 여부) | F7 | 메타데이터 추가 |
 | V6 | ~~Pleos Maven 저장소에서 `Vehicle:2.3.2`가 인증 없이 받아지는가~~ **확인됨 (11/10)**: 인증 없이 받아진다 | 2 | — |
 

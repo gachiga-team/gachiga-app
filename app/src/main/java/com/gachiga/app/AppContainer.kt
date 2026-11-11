@@ -8,6 +8,7 @@ import com.gachiga.app.data.vehicle.DemoVehicleDataSource
 import com.gachiga.app.data.vehicle.PleosVehicleDataSource
 import com.gachiga.app.data.vehicle.VehicleDataSource
 import com.gachiga.app.data.voice.NoopVoiceIO
+import com.gachiga.app.data.voice.PleosVoiceIO
 import com.gachiga.app.data.voice.VoiceIO
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,9 @@ class AppContainer(context: Context) {
         TripRecorder(database.tripDao(), settings, ::vehicleSource, appScope)
     }
 
-    // TODO(V4): ON_DEVICE 초기화가 되면 PleosVoiceIO로 바꾼다.
-    val voice: VoiceIO = NoopVoiceIO
+    /** F8: Pleos STT·TTS ON_DEVICE. 초기화에 실패하면 canListen/canSpeak가 false로 남아 터치로 대체한다. */
+    val voice: VoiceIO by lazy {
+        runCatching { PleosVoiceIO(appContext).also { it.initialize() } }
+            .getOrElse { NoopVoiceIO }
+    }
 }

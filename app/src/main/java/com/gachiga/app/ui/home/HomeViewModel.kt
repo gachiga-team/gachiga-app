@@ -9,6 +9,8 @@ import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.Trip
 import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.VehicleCapabilities
+import com.gachiga.app.data.voice.VoiceIO
+import com.gachiga.app.domain.VoiceCommand
 import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.ExpenseCategory
 import com.gachiga.app.domain.InputMethod
@@ -38,6 +40,9 @@ data class HomeUiState(
     val energyPercent: Double? = null,
     val motion: MotionState = MotionState.UNKNOWN,
     val live: LiveTrip? = null,
+    /** F8: 음성 인식을 쓸 수 있으면 말하기 버튼을 보여 준다. */
+    val canListen: Boolean = false,
+    val listening: Boolean = false,
 ) {
     /** F7 + spec.md 3.2-4: 기록할 수 있는 차량에서 주행 중(또는 판별 불가)이면 입력을 잠근다. */
     val locked: Boolean get() = motion.locksInput && capabilities.canRecordTrip
@@ -75,8 +80,18 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
 
-    val state: StateFlow<HomeUiState> = combine(vehicle, recorder.live) { v, live ->
-        v.copy(live = live, energyType = live?.trip?.energyType ?: v.energyType)
+    private val voice: VoiceIO = container.voice
+    private val _listening = MutableStateFlow(false)
+
+    val state: StateFlow<HomeUiState> = combine(
+        vehicle, recorder.live, voice.canListen, _listening,
+    ) { v, live, canListen, listening ->
+        v.copy(
+            live = live,
+            energyType = live?.trip?.energyType ?: v.energyType,
+            canListen = canListen,
+            listening = listening,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     private val _overlay = MutableStateFlow<Overlay?>(null)
@@ -96,8 +111,117 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                     delay(REFUEL_PROMPT_MS)
                     if (_overlay.value == prompt) _overlay.value = null
                 }
+                // F8: 음성으로도 묻고 답을 한 번 듣는다. 금액이 아니면 화면 입력을 기다린다.
+                runVoice {
+                    voice.speak("${state.value.energyType.refuelWord()}하셨네요. 얼마 들었나요?")
+                    val command = listenCommand()
+                    if (command is VoiceCommand.Amount && _overlay.value == prompt) {
+                        applyRefuelAmount(refuel.id, command.amountWon.toInt())
+                    }
+                }
             }
         }
+    }
+
+    // ---- 음성 (F8) ----
+
+    private var voiceJob: Job? = null
+
+    /** 음성 대화는 한 번에 하나만. 진행 중이면 새로 시작하지 않는다. */
+    private fun runVoice(block: suspend () -> Unit) {
+        if (voiceJob?.isActive == true) return
+        voiceJob = viewModelScope.launch { block() }
+    }
+
+    private suspend fun listenText(): String? {
+        _listening.value = true
+        return try { voice.listen() } finally { _listening.value = false }
+    }
+
+    private suspend fun listenCommand(): VoiceCommand? = listenText()?.let { VoiceCommand.parse(it) }
+
+    /** 말하기 버튼. 주행 중에도 쓸 수 있는 유일한 입력이다 (F7). */
+    fun onVoiceClick() = runVoice {
+        when (val command = listenCommand()) {
+            null -> voice.speak("잘 못 들었어요. 다시 말해 주세요.")
+            is VoiceCommand.StartTrip -> voiceStart(command.headcount)
+            VoiceCommand.Pause -> {
+                if (state.value.live?.isPaused == false) { recorder.pause(); voice.speak("기록을 잠시 멈출게요.") }
+                else voice.speak("지금은 멈출 기록이 없어요.")
+            }
+            VoiceCommand.Resume -> {
+                if (state.value.live?.isPaused == true) { recorder.resume(); voice.speak("다시 기록할게요.") }
+                else voice.speak("지금은 다시 시작할 기록이 없어요.")
+            }
+            VoiceCommand.EndTrip -> voiceEnd()
+            is VoiceCommand.AddExpense -> {
+                if (state.value.live == null) { voice.speak("진행 중인 여행이 없어요."); return@runVoice }
+                recorder.addExpense(command.category, command.amountWon.toInt(), InputMethod.VOICE)
+                voice.speak("${command.category.label()} ${won(command.amountWon)}을 기록했어요.")
+            }
+            is VoiceCommand.Amount -> {
+                val pending = _overlay.value as? Overlay.RefuelAmount
+                if (pending != null) applyRefuelAmount(pending.refuel.id, command.amountWon.toInt())
+                else voice.speak("어떤 비용인지 함께 말해 주세요. 예를 들면 통행료 삼천 원.")
+            }
+            VoiceCommand.Yes, VoiceCommand.No, VoiceCommand.Unknown ->
+                voice.speak("잘 못 알아들었어요. 여행 시작, 통행료 얼마, 여행 종료처럼 말해 주세요.")
+        }
+    }
+
+    private suspend fun voiceStart(spokenHeadcount: Int?) {
+        if (state.value.live != null) { voice.speak("이미 여행 중이에요."); return }
+        var headcount = spokenHeadcount
+        if (headcount == null) {
+            voice.speak("몇 명이 함께 가나요?")
+            headcount = listenText()?.let { VoiceCommand.headcountOf(it) } // "세 명"처럼 인원만 말해도 된다
+        }
+        if (headcount == null) {
+            // F1: 정차 중이면 인원 선택 화면, 주행 중이면 1명으로 시작하고 나중에 고친다.
+            if (!state.value.locked) { _overlay.value = Overlay.Headcount; return }
+            headcount = 1
+        }
+        startTrip(headcount)
+    }
+
+    private suspend fun voiceEnd() {
+        if (state.value.live == null) { voice.speak("진행 중인 여행이 없어요."); return }
+        if (state.value.motion != MotionState.PARKED) { voice.speak("정차한 뒤에 여행을 끝낼 수 있어요."); return }
+        // F5: 실수 방지를 위해 한 번 확인한다.
+        voice.speak("여행을 끝낼까요?")
+        if (listenCommand() == VoiceCommand.Yes) endTrip() else voice.speak("계속 기록할게요.")
+    }
+
+    private suspend fun applyRefuelAmount(refuelId: Long, amountWon: Int) {
+        if ((_overlay.value as? Overlay.RefuelAmount)?.refuel?.id == refuelId) _overlay.value = null
+        recorder.setRefuelAmount(refuelId, amountWon)
+        voice.speak("${won(amountWon)}으로 기록했어요.")
+    }
+
+    private suspend fun startTrip(headcount: Int) {
+        when (val result = recorder.start(headcount)) {
+            TripRecorder.StartResult.Started -> voice.speak("${headcount}명, 여행을 시작할게요.")
+            is TripRecorder.StartResult.Failed -> {
+                _overlay.value = Overlay.Message(result.reason)
+                voice.speak(result.reason)
+            }
+        }
+    }
+
+    private suspend fun endTrip() {
+        val tripId = recorder.end()
+        if (tripId == null) {
+            _overlay.value = Overlay.Message("여행은 정차 중(기어 P)에만 끝낼 수 있어요.")
+            return
+        }
+        val summary = recorder.summary(tripId)?.let { (trip, result) -> TripSummary(trip, result) } ?: return
+        _summary.value = summary
+        val r = summary.result
+        val distance = "총 %.0f킬로미터를 달렸어요.".format(r.distanceKm)
+        voice.speak(
+            if (summary.trip.headcount > 1) "$distance 한 사람당 ${won(r.perPersonWon)}이에요."
+            else "$distance 비용은 ${won(r.totalCostWon)}이에요.",
+        )
     }
 
     private var refuelPromptTimeout: Job? = null
@@ -120,10 +244,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     fun onHeadcountChosen(headcount: Int) {
         _overlay.value = null
-        viewModelScope.launch {
-            val result = recorder.start(headcount)
-            if (result is TripRecorder.StartResult.Failed) _overlay.value = Overlay.Message(result.reason)
-        }
+        viewModelScope.launch { startTrip(headcount) }
     }
 
     fun onPause() { viewModelScope.launch { recorder.pause() } }
@@ -133,14 +254,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     fun onEndConfirmed() {
         _overlay.value = null
-        viewModelScope.launch {
-            val tripId = recorder.end()
-            if (tripId == null) {
-                _overlay.value = Overlay.Message("여행은 정차 중(기어 P)에만 끝낼 수 있어요.")
-                return@launch
-            }
-            _summary.value = recorder.summary(tripId)?.let { (trip, result) -> TripSummary(trip, result) }
-        }
+        viewModelScope.launch { endTrip() }
     }
 
     fun onExpenseClick() { _overlay.value = Overlay.Expense }
@@ -152,6 +266,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     fun onRefuelAmountEntered(refuelId: Long, amountWon: Int) {
         _overlay.value = null
+        voiceJob?.cancel() // 화면으로 답했으면 듣기를 멈춘다
         viewModelScope.launch { recorder.setRefuelAmount(refuelId, amountWon) }
     }
 
