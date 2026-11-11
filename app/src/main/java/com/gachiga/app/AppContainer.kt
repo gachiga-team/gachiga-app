@@ -3,15 +3,22 @@ package com.gachiga.app
 import android.content.Context
 import com.gachiga.app.data.settings.VehicleSettingsRepository
 import com.gachiga.app.data.trip.AppDatabase
+import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.DemoVehicleDataSource
 import com.gachiga.app.data.vehicle.PleosVehicleDataSource
 import com.gachiga.app.data.vehicle.VehicleDataSource
 import com.gachiga.app.data.voice.NoopVoiceIO
 import com.gachiga.app.data.voice.VoiceIO
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /** 수동 DI (spec.md 2절). */
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
+
+    /** 화면과 상관없이 앱 프로세스가 살아 있는 동안 도는 작업용 (여행 기록). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val database: AppDatabase by lazy { AppDatabase.create(appContext) }
     val settings = VehicleSettingsRepository(appContext)
@@ -24,6 +31,10 @@ class AppContainer(context: Context) {
 
     fun vehicleSource(demoMode: Boolean): VehicleDataSource =
         if (demoMode) demoVehicle else pleosVehicle
+
+    val recorder: TripRecorder by lazy {
+        TripRecorder(database.tripDao(), settings, ::vehicleSource, appScope)
+    }
 
     // TODO(V4): ON_DEVICE 초기화가 되면 PleosVoiceIO로 바꾼다.
     val voice: VoiceIO = NoopVoiceIO

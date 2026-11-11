@@ -15,6 +15,12 @@ interface TripDao {
     @Query("SELECT * FROM Trip WHERE status = 'ENDED' ORDER BY startedAt DESC")
     fun observeEndedTrips(): Flow<List<Trip>>
 
+    @Query("SELECT * FROM Trip WHERE status != 'ENDED' ORDER BY startedAt DESC LIMIT 1")
+    suspend fun ongoingTrip(): Trip?
+
+    @Query("SELECT * FROM Trip WHERE id = :id")
+    suspend fun tripById(id: Long): Trip?
+
     @Insert suspend fun insertTrip(trip: Trip): Long
     @Update suspend fun updateTrip(trip: Trip)
 

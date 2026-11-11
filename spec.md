@@ -64,7 +64,8 @@ ui (Compose 화면, ViewModel)
 ```
 
 - 정산 계산과 주유 감지 로직은 Android 의존성이 없는 순수 Kotlin으로 두고 단위 테스트한다.
-- 기록은 포그라운드 서비스(`TripRecordingService`)에서 한다. 화면이 꺼지거나 다른 앱으로 가도 기록이 이어져야 한다.
+- 기록은 앱 프로세스 범위의 `TripRecorder`가 한다. 화면이 꺼지거나 다른 앱으로 가도 프로세스가 살아 있는 동안 기록이 이어지고, 프로세스가 다시 뜨면 진행 중인 여행을 DB에서 이어받는다.
+  - 포그라운드 서비스는 1단계에서 쓰지 않는다. Android 14(targetSdk 34)에서는 서비스 유형과 그에 맞는 권한(`FOREGROUND_SERVICE_SPECIAL_USE` 등)이 더 필요하고, App Market 권한 심사 대상이 늘어나기 때문이다. 실제 차량에서 프로세스가 정리되는 일이 잦으면 2단계에서 다시 검토한다.
 
 ### 3.1 VehicleDataSource
 
@@ -173,16 +174,20 @@ data class VehicleCapabilities(
 - **완료 조건:** 시작 후 앱을 강제 종료하고 다시 열어도 같은 여행이 `ACTIVE`로 이어진다.
 
 ### F2. 주행 중 기록
-- `TripRecordingService`가 주행거리와 에너지 % 구독값을 받는다.
+- `TripRecorder`가 주행거리와 에너지 % 구독값을 받는다.
 - 에너지 %가 내려가면 그 차이를 현재 `Segment.energyUsedPercent`에 더한다. 올라가면 F3으로 넘긴다.
+  - 기준값은 내려갈 때만 따라 내려간다. 주행 중 잠깐 올랐다 내려온 흔들림은 사용량으로 세지 않는다(`EnergyTracker`).
+- 열린 구간의 `endOdometerKm`은 구간이 닫히기 전에도 최신 주행거리로 갱신한다. 열려 있는지는 `endedAt == null`로 판단한다.
 - DB 쓰기는 값이 바뀔 때만 하되, 최소 10초 간격으로 모아서 쓴다.
 - **완료 조건:** Virtual Console에서 주행거리를 늘리면 홈 화면의 "이번 여행 거리"가 5초 안에 바뀐다.
 
 ### F3. 주유·충전 감지
 - 조건: `MotionState == PARKED`이고, 에너지 %가 정차 시작 시점보다 **3%p 이상** 오른 뒤 30초 동안 더 오르지 않을 때 주유(충전) 1건으로 확정한다.
 - 확정되면 TTS로 "주유하셨네요. 얼마 넣으셨어요?"라고 묻고 STT로 금액을 받는다. 음성이 안 되면 금액 입력 시트를 띄운다.
-- 30초 안에 답이 없거나 건너뛰면 `amountWon = null`로 저장하고, 나중에 리포트에서 입력할 수 있게 한다.
+- 30초 안에 입력을 시작하지 않거나 건너뛰면 `amountWon = null`로 저장한다. 숫자를 누르기 시작하면 자동으로 닫지 않는다.
+- 금액을 놓친 건은 정차 화면의 "충전(주유) 금액 입력" 버튼으로 나중에 입력한다. 여행이 끝난 뒤 입력하는 화면은 F6에서 만든다.
 - 주행 중 상승(센서 흔들림)은 무시한다.
+- 오르는 도중 출발하면(정차 → 주행) 그 자리에서 확정한다.
 - **완료 조건:** 데모 모드나 Virtual Console에서 정차 상태로 %를 30→80으로 올리면 1건만 감지되고 금액 입력을 요청한다.
 
 ### F4. 비용 입력
@@ -252,6 +257,19 @@ data class VehicleCapabilities(
 
 ---
 
+### F1~F5 에뮬레이터 확인 결과 (2026-11-11)
+
+Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
+
+| 기능 | 확인한 것 |
+|---|---|
+| F1 | 3명으로 시작 → 전기차로 인식, 시작 값 20,000km·80% 저장. 강제 종료 후 다시 열어도 같은 여행이 ACTIVE로 이어짐 |
+| F2 | 주행 52km, 배터리 80→68% → "52.0 km · 배터리 12.0%p 사용 (9.2 kWh)" |
+| F3 | 정차 중 68→90% → 30초 뒤 1건만 감지, 금액 입력 창 표시. 나중에 6,800원 입력 → 단가 401원/kWh |
+| F4 | 통행료 4,800원 입력 → 기타 비용과 1인 부담에 반영 |
+| F5 | 일시정지 중 15km·4%p는 빠지고 재개 후 20km·5%p만 더해짐(72km, 17%p). 종료 확인 → 정산 결과: 총 10,055원, 1인 3,350원, 운전자 3,355원 (손 계산과 일치) |
+| F7 | 기어 D에서 "여행 중 · 52.0 km · 배터리 −12%" 한 줄만 표시, 버튼 없음 |
+
 ## 6. 화면 목록
 
 | 화면 | 주행 중 | 내용 |
@@ -315,7 +333,8 @@ data class VehicleCapabilities(
 4. Device Manager → Create device → Automotive → `Pleos Connect v2.1.0` → RAM 4GB, Default boot `Cold` → API 34 `Pleos Connect v2.1.0 APIs`.
 5. 마이크 접근 설정(에뮬레이터 설정 문서).
 6. Virtual Console: 에뮬레이터 실행 후 `adb forward tcp:8088 tcp:8088` → 브라우저에서 `http://127.0.0.1:8088/`.
-   - **페이지를 브라우저에 열어 둔 동안에만** 값 변경이 받아들여진다. 닫혀 있으면 `{"error":"emulator_inactive"}`(503)가 온다.
+   - **페이지를 브라우저에 열어 둔 동안에만** 값 변경이 받아들여진다. 닫혀 있거나 탭이 백그라운드로 가면 `{"error":"emulator_inactive"}`(503)가 온다.
+     페이지는 1초마다 `POST /browser/session?client=<id>`를 보낸다. 스크립트로 시연할 때는 이 요청을 대신 보내면 브라우저 없이도 쓸 수 있다.
    - 값 변경 API(스크립트로 시연 자동화할 때): `PUT /vehicle/odometer?traveled_distance_km=N`, `PUT /vehicle/ev-battery?field=soc&value=N`, `PUT /vehicle/gear?gear=Park|Reverse|Neutral|Drive`.
    - Pleos 런처에서 앱은 오른쪽 패널에 뜬다. `adb shell am start`로 열 때는 `--user 10`을 붙인다.
 7. Pleos Playground 가입 → My Project 생성. 1단계에서는 Vehicle 상태 조회가 '사용 가능'이라 신청 없이 쓸 수 있다. Client ID/Secret은 STT·TTS 서버 모드에만 필요하므로 1단계(ON_DEVICE)에서는 쓰지 않는다.

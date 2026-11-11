@@ -4,13 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gachiga.app.AppContainer
+import com.gachiga.app.data.trip.LiveTrip
+import com.gachiga.app.data.trip.Refuel
+import com.gachiga.app.data.trip.Trip
+import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.VehicleCapabilities
 import com.gachiga.app.domain.EnergyType
+import com.gachiga.app.domain.ExpenseCategory
+import com.gachiga.app.domain.InputMethod
 import com.gachiga.app.domain.MotionState
+import com.gachiga.app.domain.Settlement
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -26,16 +37,29 @@ data class HomeUiState(
     val odometerKm: Double? = null,
     val energyPercent: Double? = null,
     val motion: MotionState = MotionState.UNKNOWN,
-)
+    val live: LiveTrip? = null,
+) {
+    /** F7 + spec.md 3.2-4: 기록할 수 있는 차량에서 주행 중(또는 판별 불가)이면 입력을 잠근다. */
+    val locked: Boolean get() = motion.locksInput && capabilities.canRecordTrip
+}
 
-/**
- * 뼈대 단계의 홈 화면 상태. 차량 값과 주행/정차 상태만 보여 준다.
- * 여행 시작·기록·정산(F1~F6)은 TripEngine을 만든 뒤 여기에 연결한다.
- */
+/** 정차 중에만 보이는 대화상자. */
+sealed interface Overlay {
+    data object Headcount : Overlay
+    data object Expense : Overlay
+    data class RefuelAmount(val refuel: Refuel) : Overlay
+    data object ConfirmEnd : Overlay
+    data class Message(val text: String) : Overlay
+}
+
+data class TripSummary(val trip: Trip, val result: Settlement.Result)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
-    val state: StateFlow<HomeUiState> = container.settings.settings
+    private val recorder: TripRecorder = container.recorder
+
+    private val vehicle: Flow<HomeUiState> = container.settings.settings
         .flatMapLatest { settings ->
             val source = container.vehicleSource(settings.demoMode)
             flow { emit(source.capabilities()) }.flatMapLatest { caps ->
@@ -50,7 +74,91 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    val state: StateFlow<HomeUiState> = combine(vehicle, recorder.live) { v, live ->
+        v.copy(live = live, energyType = live?.trip?.energyType ?: v.energyType)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    private val _overlay = MutableStateFlow<Overlay?>(null)
+    val overlay: StateFlow<Overlay?> = _overlay.asStateFlow()
+
+    private val _summary = MutableStateFlow<TripSummary?>(null)
+    val summary: StateFlow<TripSummary?> = _summary.asStateFlow()
+
+    init {
+        // F3: 주유·충전을 감지하면 금액을 묻는다. 30초 안에 입력을 시작하지 않으면 닫고 미입력으로 둔다.
+        viewModelScope.launch {
+            recorder.refuelDetected.collect { refuel ->
+                val prompt = Overlay.RefuelAmount(refuel)
+                _overlay.value = prompt
+                refuelPromptTimeout?.cancel()
+                refuelPromptTimeout = launch {
+                    delay(REFUEL_PROMPT_MS)
+                    if (_overlay.value == prompt) _overlay.value = null
+                }
+            }
+        }
+    }
+
+    private var refuelPromptTimeout: Job? = null
+
+    /** 금액을 누르기 시작하면 자동으로 닫히지 않게 한다. */
+    fun onAmountInputStarted() {
+        refuelPromptTimeout?.cancel()
+        refuelPromptTimeout = null
+    }
+
+    /** 감지 때 금액을 놓친 주유·충전을 나중에 입력한다 (F3). 가장 최근 미입력 건부터. */
+    fun onUnpaidRefuelClick() {
+        val refuel = state.value.live?.refuels?.lastOrNull { it.amountWon == null } ?: return
+        _overlay.value = Overlay.RefuelAmount(refuel)
+    }
+
+    // ---- 여행 명령 ----
+
+    fun onStartClick() { _overlay.value = Overlay.Headcount }
+
+    fun onHeadcountChosen(headcount: Int) {
+        _overlay.value = null
+        viewModelScope.launch {
+            val result = recorder.start(headcount)
+            if (result is TripRecorder.StartResult.Failed) _overlay.value = Overlay.Message(result.reason)
+        }
+    }
+
+    fun onPause() { viewModelScope.launch { recorder.pause() } }
+    fun onResume() { viewModelScope.launch { recorder.resume() } }
+
+    fun onEndClick() { _overlay.value = Overlay.ConfirmEnd }
+
+    fun onEndConfirmed() {
+        _overlay.value = null
+        viewModelScope.launch {
+            val tripId = recorder.end()
+            if (tripId == null) {
+                _overlay.value = Overlay.Message("여행은 정차 중(기어 P)에만 끝낼 수 있어요.")
+                return@launch
+            }
+            _summary.value = recorder.summary(tripId)?.let { (trip, result) -> TripSummary(trip, result) }
+        }
+    }
+
+    fun onExpenseClick() { _overlay.value = Overlay.Expense }
+
+    fun onExpenseEntered(category: ExpenseCategory, amountWon: Int) {
+        _overlay.value = null
+        viewModelScope.launch { recorder.addExpense(category, amountWon, InputMethod.TOUCH) }
+    }
+
+    fun onRefuelAmountEntered(refuelId: Long, amountWon: Int) {
+        _overlay.value = null
+        viewModelScope.launch { recorder.setRefuelAmount(refuelId, amountWon) }
+    }
+
+    fun dismissOverlay() { _overlay.value = null }
+    fun dismissSummary() { _summary.value = null }
+
+    // ---- 데모 모드 (F10) ----
 
     fun setDemoMode(enabled: Boolean) {
         viewModelScope.launch { container.settings.setDemoMode(enabled) }
@@ -65,6 +173,8 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         map<Double, Double?> { it }.onStart { emit(null) }
 
     companion object {
+        private const val REFUEL_PROMPT_MS = 30_000L
+
         fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = HomeViewModel(container) as T
