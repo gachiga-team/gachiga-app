@@ -67,6 +67,10 @@ class VehicleSettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun setOnboarded() {
+        context.dataStore.edit { it[Keys.onboarded] = true }
+    }
+
     suspend fun setDemoMode(enabled: Boolean) {
         context.dataStore.edit { it[Keys.demoMode] = enabled }
     }

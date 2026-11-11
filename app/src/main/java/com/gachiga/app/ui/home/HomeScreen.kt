@@ -20,7 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
+import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.MotionState
 import com.gachiga.app.ui.theme.CarDimens
 
@@ -29,6 +31,8 @@ fun HomeScreen(vm: HomeViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val overlay by vm.overlay.collectAsStateWithLifecycle()
     val summary by vm.summary.collectAsStateWithLifecycle()
+    val settingsOpen by vm.settingsOpen.collectAsStateWithLifecycle()
+    val vehicleSettings by vm.vehicleSettings.collectAsStateWithLifecycle()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         // F7: 주행 중(또는 판별 불가)이면 한 줄 정보만 보여 주고 입력 UI와 대화상자를 모두 숨긴다.
@@ -40,9 +44,17 @@ fun HomeScreen(vm: HomeViewModel) {
 
         val currentSummary = summary
         when {
+            settingsOpen -> SettingsScreen(
+                settings = vehicleSettings,
+                capabilities = state.capabilities,
+                firstRun = !vehicleSettings.onboarded,
+                tripInProgress = state.live != null,
+                onSave = vm::onSettingsSaved,
+                onCancel = vm::onSettingsCancelled,
+            )
             currentSummary != null -> SummaryScreen(currentSummary, onDone = vm::dismissSummary)
             state.live != null -> TripScreen(state, state.live!!, vm)
-            else -> IdleScreen(state, vm)
+            else -> IdleScreen(state, vehicleSettings, vm)
         }
 
         when (val o = overlay) {
@@ -95,11 +107,27 @@ private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPar
 
 /** 여행이 없을 때 (정차 중). */
 @Composable
-private fun IdleScreen(state: HomeUiState, vm: HomeViewModel) {
+private fun IdleScreen(state: HomeUiState, settings: VehicleSettings, vm: HomeViewModel) {
     Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         if (state.demoMode) DemoBadge()
         Text("같이가", style = MaterialTheme.typography.headlineMedium)
+        if (!state.vehicleChecked) {
+            Text("차량 정보를 확인하는 중이에요…", style = MaterialTheme.typography.bodyLarge)
+            OutlinedButton(onClick = vm::onSettingsClick, modifier = Modifier.height(CarDimens.buttonHeight)) {
+                Text("차량 설정")
+            }
+            return@Column
+        }
         Text(vehicleLine(state), style = MaterialTheme.typography.bodyLarge)
+        // F9: 정산에 쓰는 설정값을 늘 보여 준다 (intent.md 원칙 2: 근거를 정직하게)
+        val type = state.energyType
+        val (capacity, price) = if (type == EnergyType.EV) settings.evCapacityKWh to settings.evPriceWonPerKWh
+        else settings.fuelCapacityL to settings.fuelPriceWonPerL
+        Text(
+            "정산 기준: ${type.label()} %.1f %s · 기본 단가 %,d원/%s".format(capacity, type.unit(), price, type.unit()),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Gray,
+        )
 
         if (!state.capabilities.canRecordTrip) {
             Text(
@@ -117,10 +145,15 @@ private fun IdleScreen(state: HomeUiState, vm: HomeViewModel) {
             if (state.capabilities.canRecordTrip) TalkButton(state, vm::onVoiceClick)
         }
 
-        OutlinedButton(
-            onClick = { vm.setDemoMode(!state.demoMode) },
-            modifier = Modifier.height(CarDimens.buttonHeight),
-        ) { Text(if (state.demoMode) "데모 모드 끄기" else "데모 모드 켜기") }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OutlinedButton(onClick = vm::onSettingsClick, modifier = Modifier.height(CarDimens.buttonHeight)) {
+                Text("차량 설정")
+            }
+            OutlinedButton(
+                onClick = { vm.setDemoMode(!state.demoMode) },
+                modifier = Modifier.height(CarDimens.buttonHeight),
+            ) { Text(if (state.demoMode) "데모 모드 끄기" else "데모 모드 켜기") }
+        }
 
         if (state.demoMode) DemoPanel(vm)
     }

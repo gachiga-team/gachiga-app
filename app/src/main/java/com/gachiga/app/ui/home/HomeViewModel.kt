@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gachiga.app.AppContainer
+import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
 import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.Trip
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -39,6 +41,8 @@ data class HomeUiState(
     val odometerKm: Double? = null,
     val energyPercent: Double? = null,
     val motion: MotionState = MotionState.UNKNOWN,
+    /** 차량 지원 여부 확인이 끝났는지. 앱을 켠 직후에는 차량 서비스 연결에 몇 초 걸린다. */
+    val vehicleChecked: Boolean = false,
     val live: LiveTrip? = null,
     /** F8: 음성 인식을 쓸 수 있으면 말하기 버튼을 보여 준다. */
     val canListen: Boolean = false,
@@ -75,7 +79,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                     source.energyPercent(energyType).onStartNull(),
                     source.motion().onStart { emit(MotionState.UNKNOWN) },
                 ) { odo, energy, motion ->
-                    HomeUiState(settings.demoMode, caps, energyType, odo, energy, motion)
+                    HomeUiState(settings.demoMode, caps, energyType, odo, energy, motion, vehicleChecked = true)
                 }
             }
         }
@@ -99,6 +103,34 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _summary = MutableStateFlow<TripSummary?>(null)
     val summary: StateFlow<TripSummary?> = _summary.asStateFlow()
+
+    // ---- 차량 설정 (F9) ----
+
+    val vehicleSettings: StateFlow<VehicleSettings> =
+        container.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, VehicleSettings())
+
+    private val _settingsOpen = MutableStateFlow(false)
+    val settingsOpen: StateFlow<Boolean> = _settingsOpen.asStateFlow()
+
+    fun onSettingsClick() { _settingsOpen.value = true }
+
+    fun onSettingsSaved(settings: VehicleSettings) {
+        _settingsOpen.value = false
+        viewModelScope.launch { container.settings.update(settings.copy(onboarded = true)) }
+    }
+
+    /** 첫 실행에서 "기본값으로 시작"을 누르면 기본값 그대로 쓰고 다시 묻지 않는다. */
+    fun onSettingsCancelled() {
+        _settingsOpen.value = false
+        viewModelScope.launch { container.settings.setOnboarded() }
+    }
+
+    init {
+        // F9: 처음 실행하면 차량 설정을 한 번 보여 준다.
+        viewModelScope.launch {
+            if (!container.settings.settings.first().onboarded) _settingsOpen.value = true
+        }
+    }
 
     init {
         // F3: 주유·충전을 감지하면 금액을 묻는다. 30초 안에 입력을 시작하지 않으면 닫고 미입력으로 둔다.
