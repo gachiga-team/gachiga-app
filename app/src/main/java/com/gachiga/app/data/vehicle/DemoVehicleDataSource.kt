@@ -1,5 +1,6 @@
 package com.gachiga.app.data.vehicle
 
+import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.MotionState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +26,7 @@ class DemoVehicleDataSource(
         VehicleCapabilities(odometer = true, fuelPercent = true, evSoc = true, speedOrGear = true)
 
     override fun odometerKm(): Flow<Double> = odometer.asStateFlow()
-    override fun energyPercent(): Flow<Double> = energy.asStateFlow()
+    override fun energyPercent(type: EnergyType): Flow<Double> = energy.asStateFlow()
     override fun motion(): Flow<MotionState> = motion.asStateFlow()
 
     /** "10 km 주행" 버튼 */

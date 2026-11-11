@@ -1,5 +1,6 @@
 package com.gachiga.app.data.vehicle
 
+import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.MotionState
 import kotlinx.coroutines.flow.Flow
 
@@ -11,8 +12,8 @@ interface VehicleDataSource {
     /** 누적 주행거리 (km). */
     fun odometerKm(): Flow<Double>
 
-    /** 연료 % 또는 배터리 SoC % (0..100). */
-    fun energyPercent(): Flow<Double>
+    /** [type]이 FUEL이면 연료 %, EV면 배터리 SoC % (0..100). */
+    fun energyPercent(type: EnergyType): Flow<Double>
 
     fun motion(): Flow<MotionState>
 }
@@ -24,6 +25,14 @@ data class VehicleCapabilities(
     val speedOrGear: Boolean,
 ) {
     val canRecordTrip: Boolean get() = odometer && (fuelPercent || evSoc)
+
+    /** spec.md 3.1: 하나만 읽히면 그쪽, 둘 다 읽히면 설정값, 둘 다 안 되면 null. */
+    fun resolveEnergyType(preferred: EnergyType): EnergyType? = when {
+        fuelPercent && evSoc -> preferred
+        fuelPercent -> EnergyType.FUEL
+        evSoc -> EnergyType.EV
+        else -> null
+    }
 
     companion object {
         val NONE = VehicleCapabilities(odometer = false, fuelPercent = false, evSoc = false, speedOrGear = false)

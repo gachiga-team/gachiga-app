@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.MotionState
 import com.gachiga.app.ui.theme.CarDimens
 
@@ -95,7 +96,8 @@ private fun DemoBadge() {
 
 private fun summaryLine(state: HomeUiState): String {
     val odo = state.odometerKm?.let { "%,.1f km".format(it) } ?: "주행거리 -"
-    val energy = state.energyPercent?.let { "에너지 %.0f%%".format(it) } ?: "에너지 -"
+    val label = if (state.energyType == EnergyType.EV) "배터리" else "연료"
+    val energy = state.energyPercent?.let { "$label %.0f%%".format(it) } ?: "$label -"
     val motion = when (state.motion) {
         MotionState.DRIVING -> "주행 중"
         MotionState.PARKED -> "정차 중"

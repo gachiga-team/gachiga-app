@@ -84,14 +84,19 @@ data class VehicleCapabilities(
 )
 ```
 
-**Pleos 구현이 쓸 API** (메서드 이름은 API 레퍼런스 기준, 시그니처와 단위는 **[확인 필요]**)
+**Pleos 구현이 쓰는 API** (SDK 2.3.2 클래스 파일과 에뮬레이터에서 확인, 2026-11-11)
 
-| 값 | 확인 | 조회 | 구독 | 권한 |
-|---|---|---|---|---|
-| 누적 주행거리 | `Odometer.checkCurrentDistanceDrivenCapabilities` | `getCurrentDistanceDriven` | `registerDistanceDriven` | `pleos.car.permission.CAR_DRIVE` |
-| 연료 % | `Fuel.checkFuelPercentCapabilities` | `getFuelPercent` | `registerFuelPercent` | `pleos.car.permission.CAR_ENERGY` |
-| 배터리 SoC % | `EvBattery.checkEvBatteryStateOfChargeCapabilities` | `getEvBatteryStateOfCharge` | `registerEvBatteryStateOfCharge` | `pleos.car.permission.CAR_ENERGY` |
-| 거리 단위 | Odometer 거리 단위 API **[확인 필요]** | | | `CAR_DRIVE` |
+| 값 | 확인 | 조회 | 구독 | 값 타입 | 권한 |
+|---|---|---|---|---|---|
+| 누적 주행거리 | `Odometer.checkCurrentDistanceDrivenCapabilities` | `getCurrentDistanceDriven` | `registerDistanceDriven` | `Float?`, km | `pleos.car.permission.CAR_DRIVE` |
+| 연료 % | `Fuel.checkFuelPercentCapabilities` | `getFuelPercent` | `registerFuelPercent` | `Int?` | `pleos.car.permission.CAR_ENERGY` |
+| 배터리 SoC % | `EvBattery.checkEvBatteryStateOfChargeCapabilities` | `getEvBatteryStateOfCharge` | `registerEvBatteryStateOfCharge` | `Int?` | `pleos.car.permission.CAR_ENERGY` |
+| 기어 | 없음 (한 번 읽어 보고 판단) | `Gear.getCurrentGearSelectionState` | `registerGearSelection` | `VehicleGear?` (P, R, N, D, 1~9, UNKNOWN) | `pleos.car.permission.CAR_DRIVE` |
+
+- 콜백 값은 모두 nullable이다. null은 버린다.
+- `Gear` 도메인은 공식 문서 목록에 없지만 SDK에 있다(`Vehicle.getGear()`).
+- 주행거리는 값이 그대로여도 약 4초마다 갱신 이벤트가 온다.
+- **연결 지연:** `initialize()` 직후 첫 호출은 차량 서비스 연결이 끝나지 않아 3초 넘게 응답이 없을 수 있다. 시간 초과는 '지원 안 함'이 아니라 '모름'으로 두고 1초 뒤 다시 묻는다(최대 5회). 모든 항목의 답을 받은 뒤에만 결과를 확정한다.
 
 - 사용 순서: `Vehicle(context)` → `initialize()` → `getOdometer()` 등 → `checkXxxCapabilities` → `AccessType`이 `READ` 또는 `READ_WRITE`일 때만 get/register → 종료 시 unregister → `release()`.
 - 비동기 콜백이 끝나기 전에 `release()`를 부르지 않는다.
@@ -100,8 +105,9 @@ data class VehicleCapabilities(
 
 ### 3.2 주행/정차 판별 (MotionState)
 
-1. **우선:** `CarPropertyManager`로 `PERF_VEHICLE_SPEED`, `GEAR_SELECTION`을 읽는다. **[확인 필요]** 서드파티 앱이 읽을 수 있는지와 필요한 권한(`android.car.permission.CAR_SPEED`, `CAR_POWERTRAIN`).
-   - 속도 > 3 km/h 이거나 기어가 D·R이면 `DRIVING`, 속도 0이고 기어가 P이면 `PARKED`.
+1. **우선:** Pleos `Gear` 도메인으로 기어를 읽는다(권한 `CAR_DRIVE`, 추가 권한 없음).
+   - P면 `PARKED`, UNKNOWN이면 `UNKNOWN`, 그 밖의 기어(R, N, D, 수동 단수)는 `DRIVING`. N도 차가 움직일 수 있으므로 잠근다.
+   - 속도는 쓰지 않는다. Android `CarPropertyManager`도 쓰지 않는다.
 2. **대체:** 위가 안 되면 주행거리로 추정한다.
    - 최근 20초 사이에 주행거리가 0.05 km 넘게 늘면 `DRIVING`.
    - 60초 동안 주행거리 변화가 없으면 `PARKED`.
@@ -270,7 +276,7 @@ data class VehicleCapabilities(
 <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />   <!-- Odometer -->
 <uses-permission android:name="pleos.car.permission.CAR_ENERGY" />  <!-- Fuel, EvBattery -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<!-- 확인 후 추가: RECORD_AUDIO(STT), android.car.permission.CAR_SPEED / CAR_POWERTRAIN(속도·기어) -->
+<!-- 확인 후 추가: RECORD_AUDIO(STT). 기어는 CAR_DRIVE로 읽으므로 CAR_SPEED·CAR_POWERTRAIN은 필요 없다 -->
 ```
 
 - 승인되지 않은 권한은 넣지 않는다(App Market 심사 반려 사유). `CAR_TOLL`은 쓸 API가 없으므로 넣지 않는다.
@@ -309,6 +315,9 @@ data class VehicleCapabilities(
 4. Device Manager → Create device → Automotive → `Pleos Connect v2.1.0` → RAM 4GB, Default boot `Cold` → API 34 `Pleos Connect v2.1.0 APIs`.
 5. 마이크 접근 설정(에뮬레이터 설정 문서).
 6. Virtual Console: 에뮬레이터 실행 후 `adb forward tcp:8088 tcp:8088` → 브라우저에서 `http://127.0.0.1:8088/`.
+   - **페이지를 브라우저에 열어 둔 동안에만** 값 변경이 받아들여진다. 닫혀 있으면 `{"error":"emulator_inactive"}`(503)가 온다.
+   - 값 변경 API(스크립트로 시연 자동화할 때): `PUT /vehicle/odometer?traveled_distance_km=N`, `PUT /vehicle/ev-battery?field=soc&value=N`, `PUT /vehicle/gear?gear=Park|Reverse|Neutral|Drive`.
+   - Pleos 런처에서 앱은 오른쪽 패널에 뜬다. `adb shell am start`로 열 때는 `--user 10`을 붙인다.
 7. Pleos Playground 가입 → My Project 생성. 1단계에서는 Vehicle 상태 조회가 '사용 가능'이라 신청 없이 쓸 수 있다. Client ID/Secret은 STT·TTS 서버 모드에만 필요하므로 1단계(ON_DEVICE)에서는 쓰지 않는다.
 
 ---
@@ -319,9 +328,9 @@ data class VehicleCapabilities(
 
 | # | 확인할 것 | 영향 받는 절 | 안 되면 |
 |---|---|---|---|
-| V1 | Virtual Console에서 연료 %를 바꿀 수 있는가 | 3.1, 8 | EV로 시연하거나 데모 모드 사용 |
-| V2 | Virtual Console의 주행거리 변경이 `getCurrentDistanceDriven`/`registerDistanceDriven`에 반영되는가, 단위는 km인가 | 3.1, F2 | 데모 모드 |
-| V3 | `CarPropertyManager`로 속도·기어를 읽을 수 있는가, 필요한 권한은 | 3.2, 7 | 주행거리 기반 추정 |
+| V1 | Virtual Console에서 연료 %를 바꿀 수 있는가 | 3.1, 8 | **확인됨 (11/11): 안 된다.** 에뮬레이터 차량은 전기차라 `Fuel`이 `ERROR_NOT_SUPPORTED_PROPERTY`. 배터리 SoC는 바꿀 수 있다 → **시연은 전기차(충전)로 한다** |
+| V2 | Virtual Console의 주행거리 변경이 `getCurrentDistanceDriven`/`registerDistanceDriven`에 반영되는가, 단위는 km인가 | 3.1, F2 | **확인됨 (11/11):** 바로 반영되고 단위는 km. 배터리 SoC, 기어도 반영된다 |
+| V3 | 속도·기어를 읽을 수 있는가, 필요한 권한은 | 3.2, 7 | **확인됨 (11/11):** Pleos `Gear` 도메인으로 기어를 읽는다. 권한은 `CAR_DRIVE` |
 | V4 | STT·TTS `ON_DEVICE`가 에뮬레이터에서 한국어로 동작하는가, Gradle 좌표와 권한은 | F8, 2 | 터치 대체 |
 | V5 | 주행 중 앱 Activity가 차단되는가 (`distractionOptimized` 필요 여부) | F7 | 메타데이터 추가 |
 | V6 | ~~Pleos Maven 저장소에서 `Vehicle:2.3.2`가 인증 없이 받아지는가~~ **확인됨 (11/10)**: 인증 없이 받아진다 | 2 | — |
