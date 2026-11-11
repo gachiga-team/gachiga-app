@@ -60,6 +60,7 @@ fun HomeScreen(vm: HomeViewModel) {
                 tripInProgress = state.live != null,
                 demoMode = state.demoMode,
                 onToggleDemo = { vm.setDemoMode(!state.demoMode) },
+                onTestRoute = vm::onTestRouteClick,
                 onSave = vm::onSettingsSaved,
                 onCancel = vm::onSettingsCancelled,
             )
@@ -67,6 +68,7 @@ fun HomeScreen(vm: HomeViewModel) {
                 detail = currentSummary,
                 onRefuelClick = vm::onEndedRefuelClick,
                 onHeadcountClick = vm::onEndedHeadcountClick,
+                onExpenseDelete = vm::onEndedExpenseDelete,
                 onDone = vm::dismissSummary,
             )
             history != null -> HistoryScreen(history!!, onItemClick = vm::onHistoryItemClick, onBack = vm::dismissHistory)
@@ -130,7 +132,7 @@ private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPar
             if (state.demoMode) DemoBadge()
             if (live != null) {
                 Text(
-                    if (live.isPaused) "일시정지 중" else "여행 중 · ${live.trip.headcount}명",
+                    if (live.isPaused) "일시정지 중" else "${goingTo(live.trip.destinationName)} · ${live.trip.headcount}명",
                     style = MaterialTheme.typography.headlineMedium,
                     color = if (live.isPaused) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                 )
@@ -219,7 +221,7 @@ private fun TripScreen(state: HomeUiState, live: LiveTrip, vm: HomeViewModel) {
     ) {
         if (state.demoMode) DemoBadge()
         Text(
-            if (live.isPaused) "일시정지 중 · ${live.trip.headcount}명" else "여행 중 · ${live.trip.headcount}명",
+            if (live.isPaused) "일시정지 중 · ${live.trip.headcount}명" else "${goingTo(live.trip.destinationName)} · ${live.trip.headcount}명",
             style = MaterialTheme.typography.headlineMedium,
             color = if (live.isPaused) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
         )

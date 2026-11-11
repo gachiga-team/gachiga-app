@@ -26,6 +26,8 @@ data class Trip(
     val endOdometerKm: Double? = null,
     val startEnergyPercent: Double,
     val endEnergyPercent: Double? = null,
+    /** 내비 목적지 이름 (N2). 정산 화면 제목에 쓴다. DB v2에서 추가. */
+    val destinationName: String? = null,
 )
 
 /** ACTIVE 구간 하나. 일시정지하면 닫히고 재개하면 새로 열린다. */
@@ -69,4 +71,6 @@ data class Expense(
     val category: ExpenseCategory,
     val amountWon: Int,
     val input: InputMethod,
+    /** 내비 예상 통행료면 목적지 이름 (N1). 같은 목적지로 경로를 다시 잡으면 이 기록을 덮어쓴다. DB v2에서 추가. */
+    val note: String? = null,
 )

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- debug 빌드에만: 데모 패널의 "테스트 경로" 버튼이 내비에 경로를 건다. release에는 들어가지 않는다. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+</manifest>

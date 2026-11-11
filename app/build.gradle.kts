@@ -56,6 +56,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true // debug 전용 테스트 버튼(내비 테스트 경로)에 쓴다
     }
 }
 
@@ -81,6 +82,7 @@ dependencies {
     implementation(libs.pleos.vehicle)
     implementation(libs.pleos.stt)
     implementation(libs.pleos.tts)
+    implementation(libs.pleos.navi) // 내비 연동: 예상 통행료, 출발·도착, 도착 배터리 (spec.md 9절 N1~N3)
 
     testImplementation(libs.junit)
 }

@@ -31,6 +31,12 @@ class TripHistory(private val dao: TripDao) {
         return detail(tripId)
     }
 
+    /** 잘못 들어간 비용(예: 실제로는 안 낸 내비 예상 통행료)을 지운다. */
+    suspend fun deleteExpense(tripId: Long, expenseId: Long): TripDetail? {
+        dao.expenses(tripId).find { it.id == expenseId }?.let { dao.deleteExpense(it) }
+        return detail(tripId)
+    }
+
     suspend fun setHeadcount(tripId: Long, headcount: Int): TripDetail? {
         val trip = dao.tripById(tripId) ?: return null
         dao.updateTrip(trip.copy(headcount = headcount.coerceIn(1, 9)))

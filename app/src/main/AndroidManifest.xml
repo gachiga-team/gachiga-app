@@ -10,6 +10,7 @@
     <uses-permission android:name="pleos.car.permission.CAR_ENERGY" /> <!-- Fuel, EvBattery -->
     <uses-permission android:name="pleos.car.permission.STT_SERVICE" /> <!-- SpeechToText (F8) -->
     <uses-permission android:name="pleos.car.permission.TTS_SERVICE" /> <!-- TextToSpeech (F8) -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />  <!-- NaviHelper 경로 정보 읽기 (N1~N3) -->
     <!-- 기어는 CAR_DRIVE로 읽으므로 CAR_SPEED·CAR_POWERTRAIN은 필요 없다 (V3).
          녹음은 Pleos 음성 서비스가 하므로 RECORD_AUDIO도 선언하지 않는다 (V4). -->
 

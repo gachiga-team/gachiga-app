@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gachiga.app.AppContainer
+import com.gachiga.app.data.navi.NaviEvent
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
 import com.gachiga.app.data.trip.Refuel
@@ -15,6 +16,8 @@ import com.gachiga.app.domain.VoiceCommand
 import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.ExpenseCategory
 import com.gachiga.app.domain.InputMethod
+import com.gachiga.app.domain.KoreanJosa
+import com.gachiga.app.domain.KoreanUnits
 import com.gachiga.app.domain.MotionState
 import com.gachiga.app.domain.Settlement
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -199,6 +202,94 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    // ---- 내비 연동 (spec.md 9절 N1~N3) ----
+
+    /** 마지막으로 받은 경로. 여행을 나중에 시작해도 목적지·통행료를 반영하려고 기억해 둔다. */
+    private var lastRoute: NaviEvent.RouteStarted? = null
+    private var batteryWarnedFor: String? = null
+
+    init {
+        viewModelScope.launch { container.navi.events.collect { onNaviEvent(it) } }
+    }
+
+    private fun onNaviEvent(event: NaviEvent) {
+        when (event) {
+            is NaviEvent.RouteStarted -> {
+                lastRoute = event
+                if (state.value.live != null) {
+                    viewModelScope.launch { applyRoute(event.name, event.tollFare) }
+                } else if (event.name.isNotBlank()) {
+                    // N2: 경로를 잡았는데 여행 기록이 없으면 먼저 제안한다.
+                    runVoice {
+                        voice.speak("${KoreanJosa.withEuro(event.name)} 출발하시네요. 여행 기록을 시작할까요?")
+                        if (listenCommand() == VoiceCommand.Yes) voiceStart(null)
+                    }
+                }
+                warnArrivalBattery(event.name, event.arrivalCharge)
+            }
+            is NaviEvent.Destination -> {
+                if (state.value.live != null && event.name.isNotBlank()) {
+                    viewModelScope.launch { applyRoute(event.name, event.tollFare) }
+                }
+            }
+            is NaviEvent.RouteState -> warnArrivalBattery(lastRoute?.name.orEmpty(), event.arrivalCharge)
+            is NaviEvent.Arrived -> onArrived(event.name)
+            NaviEvent.RouteEnded -> Unit
+        }
+    }
+
+    /** N1: 예상 통행료를 기록하고, 새로 기록했으면 짧게 알려 준다. */
+    private suspend fun applyRoute(name: String, tollFare: Int) {
+        val recorded = recorder.applyNaviRoute(name, tollFare) ?: return
+        announce("예상 통행료 ${won(recorded)}을 기록했어요.")
+    }
+
+    /**
+     * N3: 전기차에서 도착 때 배터리가 15% 미만으로 예상되면 한 번 알려 준다.
+     * 내비가 주는 값은 %가 아니라 **Wh**다 (에뮬레이터 확인 11/11: 49,454 = 내비 화면 63%). 용량으로 나눠 %로 바꾼다.
+     */
+    private fun warnArrivalBattery(destination: String, arrivalChargeWh: Int) {
+        if (state.value.energyType != EnergyType.EV || arrivalChargeWh < 0) return
+        val capacityKWh = state.value.live?.trip?.capacity ?: vehicleSettings.value.evCapacityKWh
+        val percent = KoreanUnits.whToPercent(arrivalChargeWh, capacityKWh) ?: return
+        if (percent >= LOW_ARRIVAL_CHARGE) return
+        val key = "$destination:${percent / 5}"
+        if (batteryWarnedFor == key) return
+        batteryWarnedFor = key
+        announce("도착할 때 배터리가 ${percent}%로 예상돼요. 가는 길에 충전하세요.")
+    }
+
+    /** N2: 목적지에 도착하면 여행을 끝낼지 묻는다. 주행 중이면 정차한 뒤 말해 달라고 한다. */
+    private fun onArrived(name: String) {
+        if (state.value.live == null) return
+        runVoice {
+            val place = name.ifBlank { "목적지" }
+            if (state.value.motion != MotionState.PARKED) {
+                voice.speak("${place}에 도착했어요. 정차한 뒤 여행 종료라고 말해 주세요.")
+                return@runVoice
+            }
+            voice.speak("${place}에 도착했어요. 여행을 끝낼까요?")
+            if (listenCommand() == VoiceCommand.Yes) endTrip() else voice.speak("계속 기록할게요.")
+        }
+    }
+
+    /** 다른 음성 대화가 끝난 뒤에 안내를 말한다 (끼어들지 않게). */
+    private fun announce(text: String) {
+        viewModelScope.launch {
+            voiceJob?.join()
+            voice.speak(text)
+        }
+    }
+
+    /** debug 빌드 전용: 내비에 테스트 경로를 건다. */
+    fun onTestRouteClick() = container.navi.requestTestRoute(37.7639, 128.8994, "강릉역")
+
+    /** 끝난 여행에서 잘못 들어간 비용(예: 내비 예상 통행료)을 지운다. */
+    fun onEndedExpenseDelete(expenseId: Long) {
+        val tripId = _summary.value?.trip?.id ?: return
+        viewModelScope.launch { _summary.value = container.history.deleteExpense(tripId, expenseId) }
+    }
+
     // ---- 음성 (F8) ----
 
     private var voiceJob: Job? = null
@@ -276,7 +367,12 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     private suspend fun startTrip(headcount: Int) {
         when (val result = recorder.start(headcount)) {
-            TripRecorder.StartResult.Started -> voice.speak("${headcount}명, 여행을 시작할게요.")
+            TripRecorder.StartResult.Started -> {
+                voice.speak("${headcount}명, 여행을 시작할게요.")
+                // N1·N2: 이미 내비 경로가 걸려 있으면 목적지와 예상 통행료를 바로 반영한다.
+                lastRoute?.let { applyRoute(it.name, it.tollFare) }
+                container.navi.refresh()
+            }
             is TripRecorder.StartResult.Failed -> {
                 _overlay.value = Overlay.Message(result.reason)
                 voice.speak(result.reason)
@@ -369,6 +465,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     companion object {
         private const val REFUEL_PROMPT_MS = 30_000L
+        private const val LOW_ARRIVAL_CHARGE = 15
 
         fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

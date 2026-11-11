@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.TripDetail
+import com.gachiga.app.domain.InputMethod
 import com.gachiga.app.domain.Settlement
 import com.gachiga.app.ui.theme.CarDimens
 import com.gachiga.app.ui.theme.SubtleText
@@ -40,6 +41,7 @@ fun SummaryScreen(
     detail: TripDetail,
     onRefuelClick: (Refuel) -> Unit,
     onHeadcountClick: () -> Unit,
+    onExpenseDelete: (Long) -> Unit,
     onDone: () -> Unit,
 ) {
     val trip = detail.trip
@@ -55,7 +57,7 @@ fun SummaryScreen(
         Modifier.fillMaxSize().padding(CarDimens.screenPadding).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
     ) {
-        Text("여행 정산 · ${dateRange(trip.startedAt, trip.endedAt)}", style = MaterialTheme.typography.headlineMedium)
+        Text("${tripTitle(trip.destinationName)} 정산 · ${dateRange(trip.startedAt, trip.endedAt)}", style = MaterialTheme.typography.headlineMedium)
 
         // 1. 누가 누구에게 얼마
         if (trip.headcount > 1) {
@@ -79,7 +81,7 @@ fun SummaryScreen(
         Row2("${type.label()} 사용", "%.1f %s".format(r.energyUsed, type.unit()), "차량 측정 × 설정 용량 %.1f %s".format(trip.capacity, type.unit()))
         Row2("단가", "%,.0f원/%s".format(r.unitPrice, type.unit()), priceBasis)
         Row2("${type.label()} 비용", won(r.energyCostWon), null)
-        Row2("통행료·주차비 등", won(r.otherCostWon), "입력값")
+        Row2("통행료·주차비 등", won(r.otherCostWon), if (detail.expenses.any { it.input == InputMethod.NAVI }) "입력값 + 내비 예상 통행료" else "입력값")
         Row2("총비용", won(r.totalCostWon), null)
         r.efficiency?.let { Row2(if (type.unit() == "kWh") "전비" else "연비", "%.1f km/%s".format(it, type.unit()), null) }
         HorizontalDivider()
@@ -105,7 +107,10 @@ fun SummaryScreen(
         Text("기타 비용", style = MaterialTheme.typography.headlineMedium)
         if (detail.expenses.isEmpty()) Text("없음", style = MaterialTheme.typography.bodyMedium, color = SubtleText)
         detail.expenses.forEach { e ->
-            Text("${time(e.createdAt)} · ${e.category.label()} ${won(e.amountWon)}", style = MaterialTheme.typography.bodyLarge)
+            ButtonRow {
+                Text("${time(e.createdAt)} · ${e.label()} ${won(e.amountWon)}", style = MaterialTheme.typography.bodyLarge)
+                SecondaryButton("삭제", { onExpenseDelete(e.id) })
+            }
         }
 
         Button(onClick = onDone, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("확인") }
@@ -129,7 +134,7 @@ fun HistoryScreen(trips: List<TripDetail>, onItemClick: (TripDetail) -> Unit, on
             OutlinedButton(onClick = { onItemClick(d) }, modifier = Modifier.heightIn(min = CarDimens.touch)) {
                 Text(
                     buildString {
-                        append("${dateRange(d.trip.startedAt, d.trip.endedAt)} · ${km(r.distanceKm)} · ${d.trip.headcount}명 · 총 ${won(r.totalCostWon)}")
+                        append("${tripTitle(d.trip.destinationName)} · ${dateRange(d.trip.startedAt, d.trip.endedAt)} · ${km(r.distanceKm)} · ${d.trip.headcount}명 · 총 ${won(r.totalCostWon)}")
                         if (d.trip.headcount > 1) append(" · 1인 ${won(r.perPersonWon)}")
                         if (d.unpaidRefuels > 0) append(" · 금액 미입력 ${d.unpaidRefuels}건")
                     },

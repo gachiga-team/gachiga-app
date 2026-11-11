@@ -16,4 +16,5 @@ enum class RefuelSource { DETECTED, MANUAL }
 
 enum class ExpenseCategory { TOLL, PARKING, OTHER }
 
-enum class InputMethod { VOICE, TOUCH }
+/** NAVI: 내비 경로의 예상 통행료를 자동으로 넣은 것 (N1). */
+enum class InputMethod { VOICE, TOUCH, NAVI }

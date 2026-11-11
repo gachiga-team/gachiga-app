@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.gachiga.app.BuildConfig
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.vehicle.VehicleCapabilities
 import com.gachiga.app.domain.EnergyType
@@ -47,6 +48,7 @@ fun SettingsScreen(
     tripInProgress: Boolean,
     demoMode: Boolean,
     onToggleDemo: () -> Unit,
+    onTestRoute: (() -> Unit)? = null,
     onSave: (VehicleSettings) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -154,6 +156,13 @@ fun SettingsScreen(
                 color = SubtleText,
             )
             SecondaryButton(if (demoMode) "데모 모드 끄기" else "데모 모드 켜기", onToggleDemo)
+        }
+
+        // debug 빌드에만: 에뮬레이터 내비에 테스트 경로를 건다 (한글 목적지 검색을 adb로 할 수 없어서)
+        if (BuildConfig.DEBUG && onTestRoute != null) {
+            HorizontalDivider()
+            Text("개발용", style = MaterialTheme.typography.headlineMedium)
+            SecondaryButton("내비 테스트 경로: 강릉역", onTestRoute)
         }
     }
 }

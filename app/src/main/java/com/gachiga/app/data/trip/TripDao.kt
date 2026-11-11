@@ -1,6 +1,7 @@
 package com.gachiga.app.data.trip
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
@@ -43,4 +44,6 @@ interface TripDao {
     suspend fun expenses(tripId: Long): List<Expense>
 
     @Insert suspend fun insertExpense(expense: Expense): Long
+    @Update suspend fun updateExpense(expense: Expense)
+    @Delete suspend fun deleteExpense(expense: Expense)
 }

@@ -1,6 +1,7 @@
 package com.gachiga.app
 
 import android.content.Context
+import com.gachiga.app.data.navi.NaviSource
 import com.gachiga.app.data.settings.VehicleSettingsRepository
 import com.gachiga.app.data.trip.AppDatabase
 import com.gachiga.app.data.trip.TripHistory
@@ -36,6 +37,9 @@ class AppContainer(context: Context) {
         if (demoMode) demoVehicle else pleosVehicle
 
     val history: TripHistory by lazy { TripHistory(database.tripDao()) }
+
+    /** 내비 연동 (spec.md 9절 N1~N3). 내비가 없는 차량이면 available이 false로 남는다. */
+    val navi: NaviSource by lazy { NaviSource(appContext).also { it.initialize() } }
 
     /** 플랫폼 주행 제한 상태 (UI_GUIDELINES.md). */
     val uxRestrictions = UxRestrictionSource(appContext)

@@ -182,6 +182,42 @@ class TripRecorder(
         _live.value = live.copy(expenses = live.expenses + expense.copy(id = id))
     }
 
+    /**
+     * 내비 경로를 진행 중인 여행에 반영한다 (spec.md 9절 N1, N2).
+     * - 목적지 이름을 여행에 남긴다.
+     * - 예상 통행료가 있으면 "통행료(내비 예상)"으로 기록한다. 같은 목적지로 경로를 다시 잡으면 새로 더하지 않고 덮어쓴다.
+     * @return 새로 기록했거나 금액이 바뀐 예상 통행료. 그대로면 null.
+     */
+    suspend fun applyNaviRoute(destinationName: String, tollFare: Int): Int? = mutex.withLock {
+        val live = _live.value ?: return@withLock null
+        var trip = live.trip
+        if (destinationName.isNotBlank() && trip.destinationName != destinationName) {
+            trip = trip.copy(destinationName = destinationName)
+            dao.updateTrip(trip)
+        }
+        var expenses = live.expenses
+        var changed: Int? = null
+        if (tollFare > 0) {
+            val existing = expenses.find { it.input == InputMethod.NAVI && it.note == destinationName }
+            if (existing == null) {
+                val expense = Expense(
+                    tripId = trip.id, createdAt = clock(), category = ExpenseCategory.TOLL,
+                    amountWon = tollFare, input = InputMethod.NAVI, note = destinationName,
+                )
+                expenses = expenses + expense.copy(id = dao.insertExpense(expense))
+                changed = tollFare
+            } else if (existing.amountWon != tollFare) {
+                val updated = existing.copy(amountWon = tollFare)
+                dao.updateExpense(updated)
+                expenses = expenses.map { if (it.id == existing.id) updated else it }
+                changed = tollFare
+            }
+        }
+        _live.value = live.copy(trip = trip, expenses = expenses)
+        Log.i(TAG, "navi route applied: $destinationName toll=$tollFare changed=$changed")
+        changed
+    }
+
     suspend fun setRefuelAmount(refuelId: Long, amountWon: Int) = mutex.withLock {
         val live = _live.value ?: return@withLock
         val refuel = live.refuels.find { it.id == refuelId } ?: return@withLock
