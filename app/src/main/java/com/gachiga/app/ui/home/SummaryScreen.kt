@@ -15,6 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.TripDetail
 import com.gachiga.app.domain.InputMethod
+import com.gachiga.app.domain.MonthlyReport
 import com.gachiga.app.domain.Settlement
 import com.gachiga.app.ui.theme.CarDimens
 import com.gachiga.app.ui.theme.SubtleText
@@ -128,6 +130,7 @@ fun HistoryScreen(trips: List<TripDetail>, onItemClick: (TripDetail) -> Unit, on
             OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("뒤로") }
             Text("지난 여행", style = MaterialTheme.typography.headlineMedium)
         }
+        MonthlyCard(trips)
         if (trips.isEmpty()) Text("아직 끝난 여행이 없어요.", style = MaterialTheme.typography.bodyLarge)
         trips.forEach { d ->
             val r = d.result
@@ -140,6 +143,34 @@ fun HistoryScreen(trips: List<TripDetail>, onItemClick: (TripDetail) -> Unit, on
                     },
                     style = MaterialTheme.typography.bodyLarge,
                 )
+            }
+        }
+    }
+}
+
+/** 월간 리포트 (spec.md 9절 N6). 그룹 여행이 없는 평소에도 볼 거리를 준다. */
+@Composable
+private fun MonthlyCard(trips: List<TripDetail>) {
+    val s = MonthlyReport.of(
+        trips.map {
+            MonthlyReport.TripFigures(it.trip.startedAt, it.result.distanceKm, it.result.totalCostWon, it.result.energyUsed, it.trip.energyType)
+        },
+        System.currentTimeMillis(),
+    )
+    Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.padding(CarDimens.gap), verticalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
+            Text("${s.month}월 리포트", style = MaterialTheme.typography.headlineMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(CarDimens.gap * 2),
+                verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
+            ) {
+                StatTile("${s.trips}번", "여행")
+                StatTile(km(s.distanceKm), "달린 거리")
+                StatTile(won(s.totalCostWon), "든 비용")
+                val type = s.energyType
+                if (s.efficiency != null && type != null) {
+                    StatTile("%.1f km/%s".format(s.efficiency, type.unit()), if (type.unit() == "kWh") "평균 전비" else "평균 연비")
+                }
             }
         }
     }

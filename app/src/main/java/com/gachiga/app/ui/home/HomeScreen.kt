@@ -279,7 +279,7 @@ fun ButtonRow(content: @Composable () -> Unit) {
 
 /** 큰 숫자 하나와 짧은 설명. */
 @Composable
-private fun StatTile(value: String, label: String) {
+fun StatTile(value: String, label: String) {
     Column {
         Text(value, style = MaterialTheme.typography.displayMedium)
         Text(label, style = MaterialTheme.typography.bodyMedium, color = SubtleText)

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gachiga.app.AppContainer
+import com.gachiga.app.BuildConfig
 import com.gachiga.app.data.navi.NaviEvent
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
@@ -15,6 +16,7 @@ import com.gachiga.app.data.voice.VoiceIO
 import com.gachiga.app.domain.VoiceCommand
 import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.ExpenseCategory
+import com.gachiga.app.domain.FatigueTimer
 import com.gachiga.app.domain.InputMethod
 import com.gachiga.app.domain.KoreanJosa
 import com.gachiga.app.domain.KoreanUnits
@@ -29,6 +31,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -290,6 +293,29 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { _summary.value = container.history.deleteExpense(tripId, expenseId) }
     }
 
+    // ---- 장시간 운전 휴식 안내 (spec.md 9절 N4) ----
+
+    /** release는 2시간(이후 1시간마다), debug는 시연·확인용으로 2분(이후 2분마다). 10분(debug 1분) 넘게 쉬면 초기화. */
+    private val fatigue = if (BuildConfig.DEBUG) {
+        FatigueTimer(limitMs = 2 * FatigueTimer.MINUTE, repeatMs = 2 * FatigueTimer.MINUTE, restMs = FatigueTimer.MINUTE)
+    } else {
+        FatigueTimer()
+    }
+
+    init {
+        viewModelScope.launch {
+            state.map { it.motion }.distinctUntilChanged().collect { fatigue.onMotion(System.currentTimeMillis(), it) }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(FATIGUE_TICK_MS)
+                fatigue.tick(System.currentTimeMillis())?.let { minutes ->
+                    announce("${FatigueTimer.spoken(minutes)} 동안 운전하셨어요. 다음 휴게소에서 잠시 쉬어 가세요.")
+                }
+            }
+        }
+    }
+
     // ---- 음성 (F8) ----
 
     private var voiceJob: Job? = null
@@ -466,6 +492,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     companion object {
         private const val REFUEL_PROMPT_MS = 30_000L
         private const val LOW_ARRIVAL_CHARGE = 15
+        private const val FATIGUE_TICK_MS = 15_000L
 
         fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
