@@ -1,0 +1,23 @@
+# 기획 문서: 팀원 실명·연락처가 들어가므로 GitHub에 올리지 않음
+docs/
+
+# Claude Code 작업 메모: 저장소에 올리지 않음
+CLAUDE.md
+.claude/
+
+# Android / Gradle
+.gradle/
+build/
+*/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.keystore
+*.jks
+
+# Kotlin 2.x
+.kotlin/

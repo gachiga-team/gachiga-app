@@ -1,0 +1,336 @@
+# spec.md — 같이가 1단계: 트립 로그 MVP
+
+> 범위: 2026-11-15 1차 접수까지. 차량 1대, 서버 없음.
+> 이 앱을 만드는 이유와 원칙은 [intent.md](intent.md)에 있다.
+> 표기: **[확인 필요]** 는 문서로 확인하지 못해 에뮬레이터에서 직접 확인해야 하는 항목이다.
+
+---
+
+## 1. 1단계 범위
+
+### 포함
+| ID | 기능 | 요약 |
+|---|---|---|
+| F1 | 여행 시작 | 인원수를 받고, 출발 시점의 주행거리와 에너지 %를 저장한다 |
+| F2 | 주행 중 기록 | 주행거리와 에너지 %를 구독해 구간 기록을 쌓는다 |
+| F3 | 주유·충전 감지 | 정차 중 에너지 %가 오르면 주유(충전)로 판단하고 금액을 묻는다 |
+| F4 | 비용 입력 | 통행료, 주차비 등 기타 비용을 정차 중에 입력한다 |
+| F5 | 여행 일시정지·종료 | 일시정지 중에는 거리와 사용량을 집계하지 않는다 |
+| F6 | 차량 1대 정산 | 총비용을 인원수로 나눠 1인당 금액과 운전자에게 보낼 금액을 보여 준다 |
+| F7 | 주행 중 화면 잠금 | 주행 중에는 한 줄 정보만 보여 주고 터치 입력을 막는다 |
+| F8 | 음성 입출력 | STT·TTS를 `ON_DEVICE` 모드로 시도하고, 안 되면 터치로 대체한다 |
+| F9 | 차량 설정 | 연료 종류, 탱크 용량(배터리 kWh), 단가를 설정한다 |
+| F10 | 데모 모드 | Virtual Console로 바꿀 수 없는 값을 앱 안에서 시뮬레이션한다 |
+
+### 제외 (2단계 이후)
+- 컨보이 모드, 서버 동기화, 그룹 코드·QR 참여
+- 여러 차량 합산 정산, QR 모바일 웹 정산서, 송금 링크
+- 함께 쉬기 제안, NaviHelper 경유지 추가, FusedLocation 경로 기록
+- 시동 기준 일차 자동 분리. 데이터 모델에 `dayIndex`만 준비해 둔다.
+- 오피넷 유가 연동, 월간 리포트
+
+---
+
+## 2. 기술 스택
+
+| 항목 | 값 | 비고 |
+|---|---|---|
+| 언어 | Kotlin 2.4.x (AGP 9 내장 Kotlin) | |
+| UI | Jetpack Compose (Material 3) | |
+| 빌드 | Gradle 9.6 (Kotlin DSL), AGP 9.5, Android Studio 2026.2 번들 JDK 25 | 주최 측 요건: Gradle 8.0 이상. 번들 JDK 25에서 돌아가는 버전으로 맞췄다 |
+| SDK 버전 | minSdk 28, compileSdk 37, targetSdk 34 | minSdk 28은 차량 보안 요건. targetSdk는 에뮬레이터 이미지와 같은 API 34. compileSdk는 최신 AndroidX 요구 |
+| 로컬 DB | Room (KSP) | |
+| 비동기 | Kotlin Coroutines, Flow | SDK 콜백은 `callbackFlow`로 감싼다 |
+| DI | 수동 DI (`AppContainer`) | 범위가 작아 Hilt는 쓰지 않는다 |
+| 차량 SDK | `ai.pleos.playground:Vehicle:2.3.2` | 저장소: `https://nexus-playground.pleos.ai/repository/maven-releases/` |
+| 음성 SDK | Pleos SpeechToText(v3.3.1 문서 기준), TextToSpeech | **[확인 필요]** Gradle 좌표. 각 SDK의 "가져오기" 문서 확인 |
+| 패키지명 | `com.gachiga.app` (가칭) | 앱 이름이 확정되면 바꾼다 |
+
+---
+
+## 3. 아키텍처
+
+```
+ui (Compose 화면, ViewModel)
+  └─ domain (TripEngine: 상태 머신, 주유 감지, 정산 계산 — 순수 Kotlin)
+       ├─ data/trip   (Room: Trip, Segment, Expense, Refuel)
+       ├─ data/vehicle (VehicleDataSource 인터페이스)
+       │     ├─ PleosVehicleDataSource   — Vehicle SDK
+       │     ├─ CarPropertyMotionSource  — 속도·기어 (확인되면)
+       │     └─ DemoVehicleDataSource    — 데모 모드
+       └─ data/voice  (VoiceIO 인터페이스)
+             ├─ PleosVoiceIO   — STT·TTS ON_DEVICE
+             └─ NoopVoiceIO    — 음성 미지원 시 (터치 대체)
+```
+
+- 정산 계산과 주유 감지 로직은 Android 의존성이 없는 순수 Kotlin으로 두고 단위 테스트한다.
+- 기록은 포그라운드 서비스(`TripRecordingService`)에서 한다. 화면이 꺼지거나 다른 앱으로 가도 기록이 이어져야 한다.
+
+### 3.1 VehicleDataSource
+
+```kotlin
+interface VehicleDataSource {
+    suspend fun capabilities(): VehicleCapabilities          // 무엇을 읽을 수 있는지
+    fun odometerKm(): Flow<Double>                           // 누적 주행거리
+    fun energyPercent(): Flow<Double>                        // 연료 % 또는 배터리 SoC %
+    fun motion(): Flow<MotionState>                          // DRIVING / PARKED / UNKNOWN
+}
+
+data class VehicleCapabilities(
+    val odometer: Boolean,
+    val fuelPercent: Boolean,
+    val evSoc: Boolean,
+    val speedOrGear: Boolean,
+)
+```
+
+**Pleos 구현이 쓸 API** (메서드 이름은 API 레퍼런스 기준, 시그니처와 단위는 **[확인 필요]**)
+
+| 값 | 확인 | 조회 | 구독 | 권한 |
+|---|---|---|---|---|
+| 누적 주행거리 | `Odometer.checkCurrentDistanceDrivenCapabilities` | `getCurrentDistanceDriven` | `registerDistanceDriven` | `pleos.car.permission.CAR_DRIVE` |
+| 연료 % | `Fuel.checkFuelPercentCapabilities` | `getFuelPercent` | `registerFuelPercent` | `pleos.car.permission.CAR_ENERGY` |
+| 배터리 SoC % | `EvBattery.checkEvBatteryStateOfChargeCapabilities` | `getEvBatteryStateOfCharge` | `registerEvBatteryStateOfCharge` | `pleos.car.permission.CAR_ENERGY` |
+| 거리 단위 | Odometer 거리 단위 API **[확인 필요]** | | | `CAR_DRIVE` |
+
+- 사용 순서: `Vehicle(context)` → `initialize()` → `getOdometer()` 등 → `checkXxxCapabilities` → `AccessType`이 `READ` 또는 `READ_WRITE`일 때만 get/register → 종료 시 unregister → `release()`.
+- 비동기 콜백이 끝나기 전에 `release()`를 부르지 않는다.
+- `onFailed`의 `VehicleException.errorCode`는 로그로 남기고, 해당 값을 '지원 안 함'으로 처리한다.
+- **연료 종류 결정:** `fuelPercent`만 지원하면 내연기관, `evSoc`만 지원하면 전기차로 본다. 둘 다 지원하면 설정값을 따르고, 둘 다 안 되면 데모 모드를 권한다.
+
+### 3.2 주행/정차 판별 (MotionState)
+
+1. **우선:** `CarPropertyManager`로 `PERF_VEHICLE_SPEED`, `GEAR_SELECTION`을 읽는다. **[확인 필요]** 서드파티 앱이 읽을 수 있는지와 필요한 권한(`android.car.permission.CAR_SPEED`, `CAR_POWERTRAIN`).
+   - 속도 > 3 km/h 이거나 기어가 D·R이면 `DRIVING`, 속도 0이고 기어가 P이면 `PARKED`.
+2. **대체:** 위가 안 되면 주행거리로 추정한다.
+   - 최근 20초 사이에 주행거리가 0.05 km 넘게 늘면 `DRIVING`.
+   - 60초 동안 주행거리 변화가 없으면 `PARKED`.
+   - 그 사이는 직전 상태를 유지한다.
+3. 판별할 수 없으면 `UNKNOWN`으로 두고, 안전을 위해 `DRIVING`처럼 다룬다(입력 잠금).
+4. **예외:** 여행 기록에 필요한 값(주행거리, 그리고 연료 % 또는 배터리 % 중 하나)을 읽지 못하는 상태(`VehicleCapabilities.canRecordTrip == false`)에서는 잠그지 않는다. 이때 화면은 "차량 값을 읽지 못했다"는 안내와 데모 모드·설정 진입만 보여 주고, 여행 시작 같은 기록 기능은 막는다.
+   - 이유: 잠그면 데모 모드를 켤 수도 없어 앱을 아예 쓸 수 없다. 기록할 데이터가 없으니 주행 중 입력할 것도 사실상 없다.
+   - 차량 값을 하나라도 읽을 수 있게 되면 3번 규칙(`UNKNOWN` → 잠금)을 그대로 따른다.
+
+---
+
+## 4. 데이터 모델 (Room)
+
+```kotlin
+@Entity data class Trip(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val status: TripStatus,               // ACTIVE, PAUSED, ENDED
+    val headcount: Int,                   // 운전자 포함 인원, 1..9
+    val energyType: EnergyType,           // FUEL, EV
+    val capacity: Double,                 // L 또는 kWh (시작 시점 설정값 복사)
+    val defaultUnitPrice: Int,            // 원/L 또는 원/kWh (시작 시점 설정값 복사)
+    val startedAt: Long, val endedAt: Long?,
+    val startOdometerKm: Double, val endOdometerKm: Double?,
+    val startEnergyPercent: Double, val endEnergyPercent: Double?,
+)
+
+@Entity data class Segment(              // ACTIVE 구간 하나. 일시정지하면 닫히고 재개하면 새로 열린다
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long, val dayIndex: Int = 1,
+    val startedAt: Long, val endedAt: Long?,
+    val startOdometerKm: Double, val endOdometerKm: Double?,
+    val energyUsedPercent: Double = 0.0,  // 구간 중 에너지 % 하락 누적 (주유로 인한 상승은 제외)
+)
+
+@Entity data class Refuel(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long, val detectedAt: Long,
+    val percentBefore: Double, val percentAfter: Double,
+    val amountWon: Int?,                  // 사용자가 입력한 금액. null이면 미입력
+    val source: Source,                   // DETECTED, MANUAL
+)
+
+@Entity data class Expense(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long, val createdAt: Long,
+    val category: Category,               // TOLL, PARKING, OTHER
+    val amountWon: Int, val input: InputMethod, // VOICE, TOUCH
+)
+```
+
+- 차량 설정(F9)은 DataStore에 둔다: `energyType`, `fuelCapacityL`(기본 50), `fuelPriceWonPerL`(기본 1,700, 가정치), `evCapacityKWh`(기본 77), `evPriceWonPerKWh`(기본 350, 가정치), `demoMode`.
+- 기본 단가는 가정치임을 설정 화면과 정산서에 표시한다.
+
+---
+
+## 5. 기능 명세와 완료 조건
+
+### F1. 여행 시작
+- 진입: 홈의 "여행 시작" 버튼(정차 중), 또는 음성 "여행 시작, 4명".
+- 인원수는 1~9명. 음성에서 숫자를 못 읽으면 인원 선택 화면을 띄운다(정차 중). 주행 중이면 기본값 1명으로 시작하고 나중에 고칠 수 있게 한다.
+- 시작 시 현재 주행거리와 에너지 %를 읽어 `Trip`과 첫 `Segment`를 만든다. 둘 중 하나라도 읽지 못하면 시작하지 않고 이유를 보여 준다.
+- 진행 중인 여행이 있으면 새 여행을 시작하지 않는다.
+- **완료 조건:** 시작 후 앱을 강제 종료하고 다시 열어도 같은 여행이 `ACTIVE`로 이어진다.
+
+### F2. 주행 중 기록
+- `TripRecordingService`가 주행거리와 에너지 % 구독값을 받는다.
+- 에너지 %가 내려가면 그 차이를 현재 `Segment.energyUsedPercent`에 더한다. 올라가면 F3으로 넘긴다.
+- DB 쓰기는 값이 바뀔 때만 하되, 최소 10초 간격으로 모아서 쓴다.
+- **완료 조건:** Virtual Console에서 주행거리를 늘리면 홈 화면의 "이번 여행 거리"가 5초 안에 바뀐다.
+
+### F3. 주유·충전 감지
+- 조건: `MotionState == PARKED`이고, 에너지 %가 정차 시작 시점보다 **3%p 이상** 오른 뒤 30초 동안 더 오르지 않을 때 주유(충전) 1건으로 확정한다.
+- 확정되면 TTS로 "주유하셨네요. 얼마 넣으셨어요?"라고 묻고 STT로 금액을 받는다. 음성이 안 되면 금액 입력 시트를 띄운다.
+- 30초 안에 답이 없거나 건너뛰면 `amountWon = null`로 저장하고, 나중에 리포트에서 입력할 수 있게 한다.
+- 주행 중 상승(센서 흔들림)은 무시한다.
+- **완료 조건:** 데모 모드나 Virtual Console에서 정차 상태로 %를 30→80으로 올리면 1건만 감지되고 금액 입력을 요청한다.
+
+### F4. 비용 입력
+- 정차 중 "비용 추가" → 종류(통행료, 주차비, 기타) → 금액.
+- 음성 "통행료 3천 2백 원"도 받는다. 한국어 금액 파싱: "만, 천, 백" 단위와 아라비아 숫자를 모두 처리한다.
+- 주행 중에는 버튼을 숨긴다(음성만 가능).
+- **완료 조건:** 금액 파서 단위 테스트에서 "삼천이백 원", "3천 2백원", "12,500원", "만 오천 원"을 모두 맞게 읽는다.
+
+### F5. 일시정지·종료
+- 일시정지: 현재 `Segment`를 닫는다. 그동안의 주행거리·에너지 변화는 집계하지 않는다. 주유 감지는 계속한다(여행 중 주유는 여행 비용에 들어가므로).
+- 재개: 새 `Segment`를 연다.
+- 종료: 정차 중에만 가능하다. 마지막 값을 저장하고 정산 화면으로 간다. 실수 방지를 위해 한 번 확인한다.
+- **완료 조건:** 일시정지 중에 늘어난 주행거리는 여행 거리에 들어가지 않는다.
+
+### F6. 차량 1대 정산
+
+**계산식**
+```
+총 거리(km)        = Σ Segment(endOdometerKm − startOdometerKm)
+사용 에너지(L/kWh) = Σ Segment.energyUsedPercent / 100 × capacity
+적용 단가(원/단위) = 금액이 입력된 주유 건이 있으면
+                       Σ amountWon / Σ((percentAfter − percentBefore)/100 × capacity)
+                     없으면 Trip.defaultUnitPrice
+에너지 비용(원)    = round(사용 에너지 × 적용 단가)
+기타 비용(원)      = Σ Expense.amountWon
+총비용(원)         = 에너지 비용 + 기타 비용
+1인 부담(원)       = floor(총비용 / headcount / 10) × 10
+운전자에게 보낼 돈 = 1인 부담 (운전자를 뺀 각 동승자)
+운전자 부담        = 총비용 − 1인 부담 × (headcount − 1)   // 10원 미만 나머지는 운전자가 낸다
+연비               = 총 거리 / 사용 에너지 (km/L 또는 km/kWh)
+```
+
+- 주유 금액 자체를 비용으로 더하지 않는다. 이번 여행에서 **쓴 만큼**만 나눈다. 주유 금액은 단가를 구하는 데만 쓴다.
+- 정산서에는 각 숫자 옆에 근거를 표시한다: "차량 측정", "입력값", "기본 단가로 추정".
+- `headcount == 1`이면 정산 대신 여행 리포트만 보여 준다.
+- **완료 조건:** 순수 Kotlin 단위 테스트로 다음을 검증한다.
+  - 주유 없음, 기본 단가 사용
+  - 주유 1건(금액 입력), 단가 역산
+  - 주유 2건 중 1건만 금액 입력 (입력된 건만으로 단가 계산)
+  - 일시정지 구간 제외
+  - 10원 단위 내림과 운전자 나머지 부담 (예: 총비용 100,005원 ÷ 3명 → 1인 33,330원, 운전자 33,345원)
+
+### F7. 주행 중 화면 잠금
+- `MotionState`가 `DRIVING` 또는 `UNKNOWN`이면 홈은 **주행 모드 화면**으로 바뀐다.
+  - 큰 글씨 한 줄: "여행 중 · 132 km · 연료 −18%"
+  - 버튼 없음. 음성 버튼 하나만 둔다(STT를 쓸 수 있을 때).
+- 상세 화면(정산, 설정, 기록 목록)은 정차 중에만 열린다. 주행 중 진입하면 주행 모드 화면으로 돌아간다.
+- AAOS 운전자 주의 분산 정책: 주행 중에도 보여야 하는 Activity에는 `distractionOptimized` 메타데이터가 필요할 수 있다. **[확인 필요]** Pleos 에뮬레이터에서의 동작.
+- **완료 조건:** Virtual Console에서 기어를 D로(또는 주행거리를 계속 늘려) 주행 상태로 만들면 3초 안에 주행 모드 화면으로 바뀌고, 입력 UI가 사라진다.
+
+### F8. 음성 입출력
+- 앱 시작 시 `SpeechToText(context, Mode.ON_DEVICE)`, `TextToSpeech(context, Mode.ON_DEVICE)`로 `initialize()`를 시도한다. 로캘은 `ko-KR`.
+- 초기화에 실패하거나 한국어를 지원하지 않으면 `NoopVoiceIO`로 바꾸고, 음성 버튼을 숨긴다. 기능은 모두 터치로 쓸 수 있어야 한다.
+- 1단계 음성 명령: "여행 시작(, N명)", "일시정지", "다시 시작", "여행 종료", 주유 금액 답변, "통행료/주차비 N원".
+- TTS 안내: 여행 시작 확인, 주유 감지 질문, 종료 요약("총 312km, 1인당 2만 4천 원").
+- 명령 해석은 앱이 한다(STT SDK는 텍스트만 돌려주고 명령을 실행하지 않는다).
+- 마이크 권한(`RECORD_AUDIO`)이 필요할 수 있다. **[확인 필요]** STT SDK의 권한 선언 문서.
+
+### F9. 차량 설정
+- 처음 실행할 때 한 번 보여 준다. 연료 종류(감지 결과를 기본 선택), 용량, 단가.
+- 진행 중인 여행에는 바뀐 설정이 적용되지 않는다(시작 시점 값을 `Trip`에 복사).
+
+### F10. 데모 모드
+- 설정 화면에서 켠다. 켜면 `DemoVehicleDataSource`가 실제 차량 값 대신 쓰인다.
+- 데모 패널(정차 중 화면 하단): "10 km 주행", "정차", "주유 +50%", "충전 +40%" 버튼.
+- Virtual Console에서 연료량을 바꿀 수 없을 때만 시연에 쓴다. 화면에 "데모 모드" 배지를 항상 보여 준다(심사에서 오해가 없도록).
+
+---
+
+## 6. 화면 목록
+
+| 화면 | 주행 중 | 내용 |
+|---|---|---|
+| 홈 (여행 없음) | 한 줄만 | 여행 시작, 최근 여행 1건, 설정 |
+| 홈 (여행 중, 정차) | 주행 모드로 전환 | 거리, 에너지 사용량, 예상 1인 부담, 비용 추가, 일시정지, 종료 |
+| 주행 모드 | 표시 | 한 줄 정보, 음성 버튼 |
+| 인원 선택 | 불가 | 1~9 큰 버튼 |
+| 금액 입력 시트 | 불가 | 숫자 패드, 종류 선택 |
+| 정산 | 불가 | 계산 근거, 1인 부담, 운전자에게 보낼 금액 |
+| 여행 기록 | 불가 | 지난 여행 목록, 미입력 주유 금액 수정 |
+| 설정 | 불가 | 연료 종류, 용량, 단가, 데모 모드 |
+
+- 차량 디스플레이 기준으로 글씨와 터치 영역을 크게 한다(본문 24sp 이상, 버튼 높이 76dp 이상). 가로 화면 기준.
+
+---
+
+## 7. 매니페스트와 권한
+
+```xml
+<uses-feature android:name="android.hardware.type.automotive" android:required="true" />
+<uses-permission android:name="pleos.car.permission.CAR_DRIVE" />   <!-- Odometer -->
+<uses-permission android:name="pleos.car.permission.CAR_ENERGY" />  <!-- Fuel, EvBattery -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<!-- 확인 후 추가: RECORD_AUDIO(STT), android.car.permission.CAR_SPEED / CAR_POWERTRAIN(속도·기어) -->
+```
+
+- 승인되지 않은 권한은 넣지 않는다(App Market 심사 반려 사유). `CAR_TOLL`은 쓸 API가 없으므로 넣지 않는다.
+
+---
+
+## 8. 시연 시나리오 (영상 약 2분)
+
+1. 정차 상태에서 앱 실행 → 차량 설정에 감지된 연료 종류가 표시됨.
+2. "여행 시작, 3명" (또는 버튼) → TTS "3명, 여행을 시작할게요".
+3. Virtual Console로 주행(기어 D, 주행거리 증가) → 앱이 주행 모드 화면으로 바뀜. 터치 UI가 사라진 것을 보여 줌.
+4. 정차(기어 P) → 상세 화면 복귀. "통행료 4천 8백 원" 입력.
+5. 정차 중 에너지 % 상승(Virtual Console 또는 데모 모드) → "주유하셨네요. 얼마 넣으셨어요?" → "6만 원".
+6. 다시 주행 후 정차 → "여행 종료" → 정산 화면: 거리, 사용량, 단가 근거, 1인 부담, 운전자에게 보낼 금액.
+
+---
+
+## 9. 1단계 일정 (2026-11-10 ~ 11-15)
+
+| 날짜 | 할 일 |
+|---|---|
+| 11/10 (화) | 개발 환경 설치(아래 10절), intent·spec 확정, 프로젝트 뼈대 |
+| 11/11 (수) | 에뮬레이터 확인 항목(11절) 검증 → spec 수정. Vehicle 데이터 소스, Room, 상태 머신 |
+| 11/12 (목) | 기록 서비스, 주유 감지, 정산 계산과 단위 테스트, 데모 모드 |
+| 11/13 (금) | Compose 화면, 주행 모드 잠금, 음성(시도·대체) |
+| 11/14 (토) | 통합 테스트, release 서명 빌드, README, 시연 영상 녹화 |
+| 11/15 (일) | 여유분. GitHub 정리(APK `apk/` 폴더), 기획서 최종본 제출 (23:59 마감) |
+
+---
+
+## 10. 개발 환경 설치 순서 (현재 이 PC에 아무것도 없음)
+
+1. Android Studio 최신 버전 설치(JDK 17 포함).
+2. SDK Manager → SDK Update Sites에 `Pleos Connect System Image` 추가: `https://nexus-playground.pleos.ai/repository/raw-releases/connect-avd/2.x/crp-sys-img.xml` (Windows)
+3. SDK Platforms → Show Package Details → API 34의 Pleos Connect 시스템 이미지 설치 → Android Studio 재시작.
+4. Device Manager → Create device → Automotive → `Pleos Connect v2.1.0` → RAM 4GB, Default boot `Cold` → API 34 `Pleos Connect v2.1.0 APIs`.
+5. 마이크 접근 설정(에뮬레이터 설정 문서).
+6. Virtual Console: 에뮬레이터 실행 후 `adb forward tcp:8088 tcp:8088` → 브라우저에서 `http://127.0.0.1:8088/`.
+7. Pleos Playground 가입 → My Project 생성. 1단계에서는 Vehicle 상태 조회가 '사용 가능'이라 신청 없이 쓸 수 있다. Client ID/Secret은 STT·TTS 서버 모드에만 필요하므로 1단계(ON_DEVICE)에서는 쓰지 않는다.
+
+---
+
+## 11. 에뮬레이터에서 먼저 확인할 것 (11/11)
+
+결과에 따라 이 문서의 해당 절을 고친다.
+
+| # | 확인할 것 | 영향 받는 절 | 안 되면 |
+|---|---|---|---|
+| V1 | Virtual Console에서 연료 %를 바꿀 수 있는가 | 3.1, 8 | EV로 시연하거나 데모 모드 사용 |
+| V2 | Virtual Console의 주행거리 변경이 `getCurrentDistanceDriven`/`registerDistanceDriven`에 반영되는가, 단위는 km인가 | 3.1, F2 | 데모 모드 |
+| V3 | `CarPropertyManager`로 속도·기어를 읽을 수 있는가, 필요한 권한은 | 3.2, 7 | 주행거리 기반 추정 |
+| V4 | STT·TTS `ON_DEVICE`가 에뮬레이터에서 한국어로 동작하는가, Gradle 좌표와 권한은 | F8, 2 | 터치 대체 |
+| V5 | 주행 중 앱 Activity가 차단되는가 (`distractionOptimized` 필요 여부) | F7 | 메타데이터 추가 |
+| V6 | ~~Pleos Maven 저장소에서 `Vehicle:2.3.2`가 인증 없이 받아지는가~~ **확인됨 (11/10)**: 인증 없이 받아진다 | 2 | — |
+
+---
+
+## 12. 빌드·제출
+
+- release 빌드는 별도 keystore로 서명한다. keystore와 비밀번호는 저장소에 올리지 않는다(`.gitignore`에 `*.jks`, `*.keystore` 이미 있음). 서명 정보는 `local.properties` 또는 환경 변수로 받는다.
+- APK 경로: `apk/팀명_앱이름_release.apk` (팀명과 앱 이름 확정 후).
+- README.md: 앱 이름과 한 줄 소개, 실행 방법, 테스트 환경(Pleos Connect Emulator v2.1.0, API 34), 필요한 설정, APK 위치.
+- 저장소, 커밋, README, 영상에 팀원 실명과 연락처를 넣지 않는다. 커밋 작성자 이름과 이메일도 익명 계정으로 설정한다.

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="true" />
+
+    <!-- spec.md 7절: 승인된 권한만 선언한다 -->
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />  <!-- Odometer -->
+    <uses-permission android:name="pleos.car.permission.CAR_ENERGY" /> <!-- Fuel, EvBattery -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 확인 후 추가 (spec.md 11절 V3, V4):
+         RECORD_AUDIO, android.car.permission.CAR_SPEED, android.car.permission.CAR_POWERTRAIN -->
+
+    <application
+        android:name=".GachigaApp"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 주행 중에도 주행 모드 화면을 보여 주기 위함. 필요 여부는 V5에서 확인 -->
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+    </application>
+</manifest>
