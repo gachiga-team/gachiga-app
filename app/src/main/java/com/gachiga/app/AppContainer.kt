@@ -7,6 +7,7 @@ import com.gachiga.app.data.trip.TripHistory
 import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.DemoVehicleDataSource
 import com.gachiga.app.data.vehicle.PleosVehicleDataSource
+import com.gachiga.app.data.vehicle.UxRestrictionSource
 import com.gachiga.app.data.vehicle.VehicleDataSource
 import com.gachiga.app.data.voice.NoopVoiceIO
 import com.gachiga.app.data.voice.PleosVoiceIO
@@ -35,6 +36,9 @@ class AppContainer(context: Context) {
         if (demoMode) demoVehicle else pleosVehicle
 
     val history: TripHistory by lazy { TripHistory(database.tripDao()) }
+
+    /** 플랫폼 주행 제한 상태 (UI_GUIDELINES.md). */
+    val uxRestrictions = UxRestrictionSource(appContext)
 
     val recorder: TripRecorder by lazy {
         TripRecorder(database.tripDao(), settings, ::vehicleSource, appScope)

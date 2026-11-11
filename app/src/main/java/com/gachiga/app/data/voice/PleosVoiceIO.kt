@@ -1,6 +1,9 @@
 package com.gachiga.app.data.voice
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -35,6 +38,19 @@ class PleosVoiceIO(context: Context) : VoiceIO {
     private val stt = SpeechToText(context, SttMode.ON_DEVICE)
     private val tts = TextToSpeech(context, TtsMode.ON_DEVICE)
 
+    /**
+     * 음성 안내가 나올 때 미디어 볼륨을 낮춘다 (UI_GUIDELINES.md 4절: 알림은 음성으로).
+     * 안내 음성 용도로 표시하고, 말하는 동안만 오디오 포커스를 MAY_DUCK으로 잡는다.
+     */
+    private val audioManager = context.getSystemService(AudioManager::class.java)
+    private val speechAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+    private val duckRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        .setAudioAttributes(speechAttributes)
+        .build()
+
     private val _canListen = MutableStateFlow(false)
     private val _canSpeak = MutableStateFlow(false)
     override val canListen: StateFlow<Boolean> = _canListen.asStateFlow()
@@ -58,6 +74,7 @@ class PleosVoiceIO(context: Context) : VoiceIO {
             tts.initialize(object : TtsInitListener {
                 override fun onSuccess() {
                     runCatching { tts.setLocale(Locale.KOREA) }
+                    runCatching { tts.setAudioAttributes(speechAttributes) }
                     Log.i(TAG, "TTS initialized")
                     _canSpeak.value = true
                 }
@@ -129,8 +146,7 @@ class PleosVoiceIO(context: Context) : VoiceIO {
         }
     }
 
-    override suspend fun speak(text: String) {
-        if (!_canSpeak.value) return
+    private suspend fun speakAndWait(text: String) {
         withTimeoutOrNull(SPEAK_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
                 val done = AtomicBoolean(false)
@@ -162,6 +178,17 @@ class PleosVoiceIO(context: Context) : VoiceIO {
                     finish()
                 }
             }
+        }
+    }
+
+    override suspend fun speak(text: String) {
+        if (!_canSpeak.value) return
+        val focus = runCatching { audioManager?.requestAudioFocus(duckRequest) }.getOrNull()
+        Log.d(TAG, "audio focus (duck) request: $focus")
+        try {
+            speakAndWait(text)
+        } finally {
+            runCatching { audioManager?.abandonAudioFocusRequest(duckRequest) }
         }
     }
 

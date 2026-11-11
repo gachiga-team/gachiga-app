@@ -5,13 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +32,7 @@ import com.gachiga.app.data.vehicle.VehicleCapabilities
 import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.SettingsInput
 import com.gachiga.app.ui.theme.CarDimens
+import com.gachiga.app.ui.theme.SubtleText
 
 /**
  * 차량 설정 (spec.md F9). 정차 중에만 열린다.
@@ -42,6 +45,8 @@ fun SettingsScreen(
     capabilities: VehicleCapabilities,
     firstRun: Boolean,
     tripInProgress: Boolean,
+    demoMode: Boolean,
+    onToggleDemo: () -> Unit,
     onSave: (VehicleSettings) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -60,8 +65,8 @@ fun SettingsScreen(
     var error by remember { mutableStateOf<String?>(null) }
 
     Column(
-        Modifier.fillMaxSize().padding(32.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        Modifier.fillMaxSize().padding(CarDimens.screenPadding).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
     ) {
         Text("차량 설정", style = MaterialTheme.typography.headlineMedium)
         if (firstRun) {
@@ -71,14 +76,14 @@ fun SettingsScreen(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ButtonRow {
             EnergyType.entries.forEach { t ->
                 FilterChip(
                     selected = type == t,
                     onClick = { type = t; error = null },
                     enabled = detected == null,
                     label = { Text(if (t == EnergyType.EV) "전기차" else "내연기관", style = MaterialTheme.typography.labelLarge) },
-                    modifier = Modifier.height(56.dp),
+                    modifier = Modifier.heightIn(min = CarDimens.touch),
                 )
             }
         }
@@ -86,11 +91,11 @@ fun SettingsScreen(
             Text(
                 "이 차량은 ${if (detected == EnergyType.EV) "전기차" else "내연기관 차량"}로 확인됐어요.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray,
+                color = SubtleText,
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        ButtonRow {
             NumberField(
                 label = if (type == EnergyType.EV) "배터리 용량 (kWh)" else "연료 탱크 용량 (L)",
                 value = capacityText,
@@ -108,14 +113,14 @@ fun SettingsScreen(
             "기본 단가는 금액을 입력하지 않은 ${type.refuelWord()}에만 쓰는 추정값이에요. " +
                 "${type.refuelWord()} 금액을 입력하면 그 금액으로 단가를 다시 계산해요.",
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.Gray,
+            color = SubtleText,
         )
         if (tripInProgress) {
             Text("진행 중인 여행에는 적용되지 않고, 다음 여행부터 적용돼요.", style = MaterialTheme.typography.bodyMedium)
         }
         error?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error) }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        ButtonRow {
             Button(
                 onClick = {
                     val cap = SettingsInput.capacity(capacityText, type)
@@ -132,11 +137,23 @@ fun SettingsScreen(
                         )
                     }
                 },
-                modifier = Modifier.height(CarDimens.buttonHeight),
+                modifier = Modifier.heightIn(min = CarDimens.touch),
             ) { Text("저장", style = MaterialTheme.typography.labelLarge) }
-            OutlinedButton(onClick = onCancel, modifier = Modifier.height(CarDimens.buttonHeight)) {
-                Text(if (firstRun) "기본값으로 시작" else "취소")
+            OutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = CarDimens.touch)) {
+                Text(if (firstRun) "기본값으로 시작" else "취소", style = MaterialTheme.typography.labelLarge)
             }
+        }
+
+        // F10 데모 모드: 시연·개발용이라 홈이 아니라 설정 안에 둔다 (UI_GUIDELINES.md 4절: 홈 버튼은 2~3개)
+        if (!firstRun && !tripInProgress) {
+            HorizontalDivider()
+            Text("데모 모드", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                "실제 차량 값 대신 앱 안의 버튼으로 주행·정차·충전을 흉내 내요. 켜 두는 동안 화면에 \"데모 모드\"가 표시돼요.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SubtleText,
+            )
+            SecondaryButton(if (demoMode) "데모 모드 끄기" else "데모 모드 켜기", onToggleDemo)
         }
     }
 }
@@ -150,7 +167,7 @@ private fun NumberField(label: String, value: String, decimal: Boolean, onChange
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge,
         keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
-        modifier = Modifier.width(360.dp),
+        modifier = Modifier.widthIn(min = 280.dp, max = 420.dp),
     )
 }
 

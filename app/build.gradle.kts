@@ -17,6 +17,8 @@ fun secret(name: String): String? = localProps.getProperty(name) ?: System.geten
 
 android {
     namespace = "com.gachiga.app"
+    // CarUxRestrictionsManager (주행 제한 상태, UI_GUIDELINES.md 1절). 기기에 있는 라이브러리를 쓴다.
+    useLibrary("android.car")
     compileSdk = 37 // 최신 AndroidX 요구. 실행 대상(targetSdk)은 Pleos 에뮬레이터와 같은 34
 
     defaultConfig {

@@ -2,11 +2,13 @@ package com.gachiga.app.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,6 +25,7 @@ import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.TripDetail
 import com.gachiga.app.domain.Settlement
 import com.gachiga.app.ui.theme.CarDimens
+import com.gachiga.app.ui.theme.SubtleText
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,8 +52,8 @@ fun SummaryScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().padding(32.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxSize().padding(CarDimens.screenPadding).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
     ) {
         Text("여행 정산 · ${dateRange(trip.startedAt, trip.endedAt)}", style = MaterialTheme.typography.headlineMedium)
 
@@ -65,9 +68,9 @@ fun SummaryScreen(
         } else {
             Text("혼자 한 여행 · 총비용 ${won(r.totalCostWon)}", style = MaterialTheme.typography.displayMedium)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        ButtonRow {
             Text("인원 ${trip.headcount}명 (운전자 포함)", style = MaterialTheme.typography.bodyLarge)
-            OutlinedButton(onClick = onHeadcountClick, modifier = Modifier.height(56.dp)) { Text("인원 고치기") }
+            OutlinedButton(onClick = onHeadcountClick, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("인원 고치기") }
         }
         HorizontalDivider()
 
@@ -83,16 +86,16 @@ fun SummaryScreen(
 
         // 3. 주유·충전 내역 (금액 고치기)
         Text("$word 내역", style = MaterialTheme.typography.headlineMedium)
-        if (detail.refuels.isEmpty()) Text("없음", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        if (detail.refuels.isEmpty()) Text("없음", style = MaterialTheme.typography.bodyMedium, color = SubtleText)
         detail.refuels.forEach { refuel ->
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            ButtonRow {
                 Text(
                     "${time(refuel.detectedAt)} · %.0f%% → %.0f%% · ".format(refuel.percentBefore, refuel.percentAfter) +
                         (refuel.amountWon?.let { won(it) } ?: "금액 미입력"),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (refuel.amountWon == null) MaterialTheme.colorScheme.secondary else Color.Unspecified,
                 )
-                OutlinedButton(onClick = { onRefuelClick(refuel) }, modifier = Modifier.height(56.dp)) {
+                OutlinedButton(onClick = { onRefuelClick(refuel) }, modifier = Modifier.heightIn(min = CarDimens.touch)) {
                     Text(if (refuel.amountWon == null) "금액 입력" else "고치기")
                 }
             }
@@ -100,12 +103,12 @@ fun SummaryScreen(
 
         // 4. 기타 비용 내역
         Text("기타 비용", style = MaterialTheme.typography.headlineMedium)
-        if (detail.expenses.isEmpty()) Text("없음", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        if (detail.expenses.isEmpty()) Text("없음", style = MaterialTheme.typography.bodyMedium, color = SubtleText)
         detail.expenses.forEach { e ->
             Text("${time(e.createdAt)} · ${e.category.label()} ${won(e.amountWon)}", style = MaterialTheme.typography.bodyLarge)
         }
 
-        Button(onClick = onDone, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("확인") }
+        Button(onClick = onDone, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("확인") }
     }
 }
 
@@ -113,17 +116,17 @@ fun SummaryScreen(
 @Composable
 fun HistoryScreen(trips: List<TripDetail>, onItemClick: (TripDetail) -> Unit, onBack: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(32.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxSize().padding(CarDimens.screenPadding).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onBack, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("뒤로") }
+        ButtonRow {
+            OutlinedButton(onClick = onBack, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("뒤로") }
             Text("지난 여행", style = MaterialTheme.typography.headlineMedium)
         }
         if (trips.isEmpty()) Text("아직 끝난 여행이 없어요.", style = MaterialTheme.typography.bodyLarge)
         trips.forEach { d ->
             val r = d.result
-            OutlinedButton(onClick = { onItemClick(d) }, modifier = Modifier.height(CarDimens.buttonHeight)) {
+            OutlinedButton(onClick = { onItemClick(d) }, modifier = Modifier.heightIn(min = CarDimens.touch)) {
                 Text(
                     buildString {
                         append("${dateRange(d.trip.startedAt, d.trip.endedAt)} · ${km(r.distanceKm)} · ${d.trip.headcount}명 · 총 ${won(r.totalCostWon)}")
@@ -139,10 +142,10 @@ fun HistoryScreen(trips: List<TripDetail>, onItemClick: (TripDetail) -> Unit, on
 
 @Composable
 private fun Row2(label: String, value: String, basis: String?) {
-    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(260.dp))
-        Text(value, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(260.dp))
-        if (basis != null) Text(basis, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.widthIn(min = 260.dp))
+        Text(value, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.widthIn(min = 260.dp))
+        if (basis != null) Text(basis, style = MaterialTheme.typography.bodyMedium, color = SubtleText)
     }
 }
 

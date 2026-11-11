@@ -47,9 +47,15 @@ data class HomeUiState(
     /** F8: 음성 인식을 쓸 수 있으면 말하기 버튼을 보여 준다. */
     val canListen: Boolean = false,
     val listening: Boolean = false,
+    /** 플랫폼 주행 제한(CarUxRestrictions). null이면 이 기기에서 확인할 수 없음. */
+    val uxRestricted: Boolean? = null,
 ) {
-    /** F7 + spec.md 3.2-4: 기록할 수 있는 차량에서 주행 중(또는 판별 불가)이면 입력을 잠근다. */
-    val locked: Boolean get() = motion.locksInput && capabilities.canRecordTrip
+    /**
+     * 입력을 잠그고 주행 화면을 보여 줄지 (F7, UI_GUIDELINES.md 5절).
+     * 1. 플랫폼이 주행 제한을 요구하면 무조건 잠근다 (Pleos 요구 사항).
+     * 2. 기록할 수 있는 차량에서 기어가 P가 아니거나 판별 불가면 잠근다 (spec.md 3.2, 3.2-4).
+     */
+    val locked: Boolean get() = uxRestricted == true || (motion.locksInput && capabilities.canRecordTrip)
 }
 
 /** 정차 중에만 보이는 대화상자. */
@@ -90,13 +96,18 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val _listening = MutableStateFlow(false)
 
     val state: StateFlow<HomeUiState> = combine(
-        vehicle, recorder.live, voice.canListen, _listening,
-    ) { v, live, canListen, listening ->
+        vehicle,
+        recorder.live,
+        voice.canListen,
+        _listening,
+        container.uxRestrictions.requiresDistractionOptimization().onStart { emit(null) },
+    ) { v, live, canListen, listening, uxRestricted ->
         v.copy(
             live = live,
             energyType = live?.trip?.energyType ?: v.energyType,
             canListen = canListen,
             listening = listening,
+            uxRestricted = uxRestricted,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

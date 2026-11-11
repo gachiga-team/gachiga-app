@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -34,15 +36,15 @@ fun HeadcountDialog(onChosen: (Int) -> Unit, onDismiss: () -> Unit) {
         Text("몇 명이 함께 가나요?", style = MaterialTheme.typography.headlineMedium)
         Text("운전자를 포함한 인원이에요.", style = MaterialTheme.typography.bodyMedium)
         for (row in listOf(1..3, 4..6, 7..9)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
                 for (n in row) {
-                    Button(onClick = { onChosen(n) }, modifier = Modifier.width(120.dp).height(CarDimens.buttonHeight)) {
+                    Button(onClick = { onChosen(n) }, modifier = Modifier.widthIn(min = 120.dp).heightIn(min = CarDimens.touch)) {
                         Text("${n}명", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
         }
-        OutlinedButton(onClick = onDismiss, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("취소") }
+        OutlinedButton(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("취소") }
     }
 }
 
@@ -67,13 +69,13 @@ fun AmountDialog(
         Text(title, style = MaterialTheme.typography.headlineMedium)
         if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium)
         if (showCategories) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
                 ExpenseCategory.entries.forEach { c ->
                     FilterChip(
                         selected = category == c,
                         onClick = { category = c },
                         label = { Text(c.label(), style = MaterialTheme.typography.labelLarge) },
-                        modifier = Modifier.height(56.dp),
+                        modifier = Modifier.heightIn(min = CarDimens.touch),
                     )
                 }
             }
@@ -84,7 +86,7 @@ fun AmountDialog(
         )
         val keys = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("00", "0", "←"))
         for (row in keys) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
                 for (key in row) {
                     OutlinedButton(
                         onClick = {
@@ -94,17 +96,17 @@ fun AmountDialog(
                                 else -> (digits + key).trimStart('0').take(MAX_DIGITS)
                             }
                         },
-                        modifier = Modifier.width(120.dp).height(64.dp),
+                        modifier = Modifier.widthIn(min = 120.dp).heightIn(min = CarDimens.touch),
                     ) { Text(key, style = MaterialTheme.typography.labelLarge) }
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            OutlinedButton(onClick = onDismiss, modifier = Modifier.height(CarDimens.buttonHeight)) { Text(dismissLabel) }
+        Row(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text(dismissLabel) }
             Button(
                 onClick = { onConfirm(category, digits.toInt()) },
                 enabled = digits.isNotEmpty(),
-                modifier = Modifier.height(CarDimens.buttonHeight),
+                modifier = Modifier.heightIn(min = CarDimens.touch),
             ) { Text("확인") }
         }
     }
@@ -116,8 +118,8 @@ fun ConfirmEndDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("여행을 끝낼까요?", style = MaterialTheme.typography.headlineMedium) },
         text = { Text("기록을 마치고 정산 결과를 보여 드려요.", style = MaterialTheme.typography.bodyMedium) },
-        confirmButton = { Button(onClick = onConfirm, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("여행 종료") } },
-        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("계속 기록") } },
+        confirmButton = { Button(onClick = onConfirm, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("여행 종료") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("계속 기록") } },
     )
 }
 
@@ -126,7 +128,7 @@ fun MessageDialog(text: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         text = { Text(text, style = MaterialTheme.typography.bodyLarge) },
-        confirmButton = { Button(onClick = onDismiss, modifier = Modifier.height(CarDimens.buttonHeight)) { Text("확인") } },
+        confirmButton = { Button(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("확인") } },
     )
 }
 
@@ -136,7 +138,7 @@ private fun CarDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface) {
             Column(
                 modifier = Modifier.padding(32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) { content() }
         }
