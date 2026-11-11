@@ -30,6 +30,7 @@
 | 항목 | 값 |
 |---|---|
 | 에뮬레이터 | Pleos Connect Emulator v2.1.0 (Automotive, API 34). 에뮬레이터 차량은 **전기차** |
+| 화면 규격 | 2560×1440 (가로), 160dpi. 앱은 Pleos 홈 화면 오른쪽 패널에 뜬다 |
 | 차량 데이터 | Pleos Connect Virtual Console, 또는 앱 안의 데모 모드 |
 | 빌드 | Android Studio 2026.2 (번들 JDK 25), Gradle 9.6.0, AGP 9.5.1, Kotlin 2.4.21 |
 | SDK 버전 | minSdk 28, targetSdk 34, compileSdk 37 |
