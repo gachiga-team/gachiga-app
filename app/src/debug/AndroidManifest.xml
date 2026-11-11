@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- debug 빌드에만: 데모 패널의 "테스트 경로" 버튼이 내비에 경로를 건다. release에는 들어가지 않는다. -->
+<!-- debug 빌드에만 들어간다. release에는 아래 권한과 receiver가 없다. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 설정 화면 "개발용" 버튼과 시연 스크립트가 내비에 테스트 경로를 건다 -->
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+
+    <application>
+        <receiver
+            android:name=".DebugReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.gachiga.app.DEBUG_TEST_ROUTE" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>

@@ -143,6 +143,24 @@
 
 ---
 
+## 시연 영상
+
+- [`demo/gachiga_demo.mp4`](demo/gachiga_demo.mp4) (2분 46초, 1920×1080, 한글 자막)
+- Pleos Connect Emulator와 Virtual Console(전기차)에서 실제로 동작하는 화면이다. 화면 녹화에 소리가 없어서, 앱의 음성 안내는 `[음성]` 자막으로 넣었다.
+- 순서: 홈 → 내비 목적지 설정과 여행 기록 제안 → 여행 시작(예상 통행료 자동 기록) → 주행 화면 → 주차비 입력 → 충전 감지와 금액 입력 → 종료와 정산 → QR 정산서와 동승자 폰 화면 → 지난 여행·월간 리포트
+
+다시 찍는 방법 (debug 빌드 설치, Virtual Console 활성 상태에서):
+
+```bash
+bash tools/demo/record_demo.sh out/demo
+```
+
+```bash
+node tools/demo/make_video.mjs out/demo out/demo/gachiga_demo.mp4
+```
+
+- 장면 폴더에는 웹 정산서 화면 `web_settle.png`와 한글 글꼴(`malgun.ttf`, `malgunbd.ttf`)을 함께 둔다. 편집에는 ffmpeg가 필요하다.
+
 ## QR 정산서 웹 페이지
 
 정산 화면의 **QR 정산서**를 동승자가 폰으로 찍으면 [`web/settle/index.html`](web/settle/index.html)이 열린다. 서버는 없고, 정산 내용은 주소의 `#` 뒤에 담긴다.
