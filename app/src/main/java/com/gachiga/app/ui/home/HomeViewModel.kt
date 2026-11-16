@@ -26,6 +26,7 @@ import com.gachiga.app.domain.InputMethod
 import com.gachiga.app.domain.KoreanJosa
 import com.gachiga.app.domain.KoreanUnits
 import com.gachiga.app.domain.MotionState
+import com.gachiga.app.domain.RestAreas
 import com.gachiga.app.domain.Settlement
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -89,6 +90,8 @@ sealed interface Overlay {
     data object GroupJoin : Overlay
     /** 같이 가기: 내 그룹 번호 보여 주기 */
     data class GroupCode(val code: String) : Overlay
+    /** 같이 가기: 일행이 보낸 함께 쉬기 제안 */
+    data class RestProposal(val from: String, val proposal: RestAreas.Proposal) : Overlay
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -324,14 +327,17 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         when (m.kind) {
             "voice" -> announce("${m.from} 메시지예요. ${m.text}")
             "rest" -> viewModelScope.launch {
-                // 함께 쉬기 제안: 다른 차량이 연료·배터리가 모자라 쉬어 가자고 한다.
+                // 함께 쉬기 제안: 다른 차량이 쉬어 가자고 한다. 정차 중이면 화면에도 보여 준다.
+                val p = RestAreas.Proposal.decode(m.text)
+                val prompt = Overlay.RestProposal(m.from, p)
+                if (!state.value.locked) _overlay.value = prompt
                 voiceJob?.join()
                 runVoice {
-                    voice.speak("${m.from}가 다음 휴게소에서 함께 쉬자고 해요. ${m.text}예요. 함께 쉴까요?")
-                    if (listenCommand() == VoiceCommand.Yes) {
-                        container.convoy.send("rest-ok", "함께 쉬어요")
-                        voice.speak("함께 쉰다고 알렸어요.")
-                    }
+                    val reason = if (p.reason.isBlank()) "" else " ${p.reason}예요."
+                    voice.speak("${m.from}가 ${p.placeName}에서 함께 쉬자고 해요.$reason 함께 쉴까요?")
+                    val yes = listenCommand() == VoiceCommand.Yes
+                    // 그사이 화면에서 이미 답했으면 다시 하지 않는다.
+                    if (yes && (state.value.locked || _overlay.value == prompt)) acceptRest(p)
                 }
             }
             "rest-ok" -> announce("${m.from}도 함께 쉬기로 했어요.")
@@ -353,12 +359,46 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             runVoice {
                 val label = state.value.energyType.label()
                 voice.speak("${label}가 ${percent.toInt()}퍼센트예요. 일행에게 다음 휴게소에서 함께 쉬자고 할까요?")
-                if (listenCommand() == VoiceCommand.Yes) {
-                    val ok = container.convoy.send("rest", "$label ${percent.toInt()}퍼센트")
-                    voice.speak(if (ok) "일행에게 알렸어요." else "지금은 일행에게 알리지 못했어요.")
-                }
+                if (listenCommand() == VoiceCommand.Yes) proposeRest("$label ${percent.toInt()}퍼센트")
             }
         }
+    }
+
+    /** 정차 화면의 "함께 쉬기 제안" 버튼. */
+    fun onRestProposeClick() { viewModelScope.launch { proposeRest("") } }
+
+    fun onRestAccepted(proposal: RestAreas.Proposal) {
+        voiceJob?.cancel() // 화면으로 답했으면 듣기를 멈춘다
+        viewModelScope.launch { acceptRest(proposal) }
+    }
+
+    /**
+     * 모일 휴게소를 골라 일행에게 제안하고, 내 내비에도 경유지로 넣는다.
+     * 진행 방향 앞쪽에서, 일행 누구도 되돌아가지 않아도 되는 가장 가까운 휴게소를 고른다.
+     */
+    private suspend fun proposeRest(reason: String) {
+        val c = convoy.value
+        if (c == null) { voice.speak("참여한 그룹이 없어요."); return }
+        val me = c.me
+        val area = if (me?.lat != null && me.lon != null) {
+            RestAreas.pick(
+                container.restAreas, me.lat, me.lon, me.heading,
+                others = c.others.filter { !it.done && it.hasLocation }.map { it.lat!! to it.lon!! },
+            )
+        } else {
+            null
+        }
+        val proposal = RestAreas.Proposal(area, reason)
+        if (!container.convoy.send("rest", proposal.encode())) { tell("지금은 일행에게 알리지 못했어요."); return }
+        val added = area != null && container.navi.addStop(area.lat, area.lon, area.name)
+        tell("${proposal.placeName}에서 함께 쉬자고 일행에게 알렸어요." + if (added) " 내비에도 넣었어요." else "")
+    }
+
+    private suspend fun acceptRest(p: RestAreas.Proposal) {
+        if (_overlay.value is Overlay.RestProposal) _overlay.value = null
+        container.convoy.send("rest-ok", p.placeName)
+        val added = p.area?.let { container.navi.addStop(it.lat, it.lon, it.name) } == true
+        voice.speak("함께 쉰다고 알렸어요." + if (added) " ${p.placeName}, 내비에 넣었어요." else "")
     }
 
     /** 위치 권한 동의 창을 띄워 달라는 요청. 화면이 받아서 시스템 창을 연다. */

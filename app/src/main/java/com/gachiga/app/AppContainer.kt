@@ -18,6 +18,8 @@ import com.gachiga.app.data.vehicle.VehicleDataSource
 import com.gachiga.app.data.voice.NoopVoiceIO
 import com.gachiga.app.data.voice.PleosVoiceIO
 import com.gachiga.app.data.voice.VoiceIO
+import com.gachiga.app.domain.RestArea
+import com.gachiga.app.domain.RestAreas
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,6 +68,12 @@ class AppContainer(context: Context) {
     /** 같이 가기(컨보이): 일행 차량과 최근 상태를 주고받는다. */
     val convoy: ConvoyManager by lazy {
         ConvoyManager(appContext, ConvoyApi(BuildConfig.CONVOY_URL), appScope, settings, ::vehicleSource, ::locationSource, recorder)
+    }
+
+    /** 함께 쉬기에 쓰는 휴게소 목록 (OpenStreetMap, tools/restareas/build.mjs로 만든다). */
+    val restAreas: List<RestArea> by lazy {
+        runCatching { appContext.assets.open("rest_areas.tsv").bufferedReader().useLines { RestAreas.parse(it) } }
+            .getOrDefault(emptyList())
     }
 
     companion object {

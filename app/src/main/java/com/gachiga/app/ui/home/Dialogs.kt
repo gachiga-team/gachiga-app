@@ -156,6 +156,23 @@ fun GroupJoinDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     }
 }
 
+/** 같이 가기: 일행이 보낸 함께 쉬기 제안. 수락하면 그 휴게소를 내비 경유지로 넣는다. */
+@Composable
+fun RestProposalDialog(from: String, place: String, reason: String, onAccept: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${from}가 함께 쉬자고 해요", style = MaterialTheme.typography.headlineMedium) },
+        text = {
+            Text(
+                place + if (reason.isBlank()) "" else " · $from $reason",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        },
+        confirmButton = { Button(onClick = onAccept, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("함께 쉬기") } },
+        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("닫기") } },
+    )
+}
+
 @Composable
 fun ConfirmEndDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(

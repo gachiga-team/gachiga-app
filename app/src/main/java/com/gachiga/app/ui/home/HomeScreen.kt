@@ -116,6 +116,13 @@ fun HomeScreen(vm: HomeViewModel) {
             is Overlay.Message -> MessageDialog(o.text, onDismiss = vm::dismissOverlay)
             Overlay.GroupJoin -> GroupJoinDialog(onConfirm = vm::onGroupCodeEntered, onDismiss = vm::dismissOverlay)
             is Overlay.GroupCode -> GroupCodeDialog(o.code, onDismiss = vm::dismissOverlay)
+            is Overlay.RestProposal -> RestProposalDialog(
+                from = o.from,
+                place = o.proposal.placeName,
+                reason = o.proposal.reason,
+                onAccept = { vm.onRestAccepted(o.proposal) },
+                onDismiss = vm::dismissOverlay,
+            )
             is Overlay.EndedRefuelAmount -> AmountDialog(
                 title = "${state.energyType.refuelWord()} 금액",
                 subtitle = "%.0f%% → %.0f%%".format(o.refuel.percentBefore, o.refuel.percentAfter),

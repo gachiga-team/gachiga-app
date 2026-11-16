@@ -14,6 +14,7 @@ import com.gachiga.app.data.convoy.ConvoyState
 import com.gachiga.app.domain.ConvoyMember
 import com.gachiga.app.domain.ConvoyMonitor
 import com.gachiga.app.domain.GroupSettlement
+import com.gachiga.app.domain.RestAreas
 import com.gachiga.app.domain.SettlementShare
 import com.gachiga.app.ui.theme.CarDimens
 import com.gachiga.app.ui.theme.SubtleText
@@ -53,6 +54,7 @@ fun ConvoyPanel(convoy: ConvoyState?, canListen: Boolean, listening: Boolean, vm
             SecondaryButton("위치 나누기 켜기", vm::onShareLocationClick)
         }
         if (canListen) SecondaryButton("일행에게 말하기", vm::onGroupTalkClick, enabled = !listening)
+        if (!convoy.done && convoy.others.any { !it.done }) SecondaryButton("함께 쉬기 제안", vm::onRestProposeClick)
         SecondaryButton("그룹 번호", vm::onGroupCodeClick)
         SecondaryButton("그룹 나가기", vm::onGroupLeaveClick)
     }
@@ -78,7 +80,7 @@ fun memberLine(me: ConvoyMember?, o: ConvoyMember): String {
 }
 
 private fun messageLine(m: ConvoyMessage): String = when (m.kind) {
-    "rest" -> "${m.from}: 다음 휴게소에서 함께 쉬어요 (${m.text})"
+    "rest" -> "${m.from}: ${RestAreas.Proposal.decode(m.text).placeName}에서 함께 쉬어요"
     "rest-ok" -> "${m.from}: 함께 쉬어요"
     else -> "${m.from}: ${m.text}"
 }

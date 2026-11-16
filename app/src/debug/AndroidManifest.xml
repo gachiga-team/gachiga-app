@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- debug 빌드에만 들어간다. release에는 아래 권한과 receiver가 없다. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 설정 화면 "개발용" 버튼과 시연 스크립트가 내비에 테스트 경로를 건다 -->
-    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+    <!-- 설정 화면 "개발용" 버튼과 시연 스크립트가 내비에 테스트 경로를 건다 (권한 NAVI_ROUTE_SEARCH는 본 매니페스트에 있다) -->
 
     <application>
         <receiver

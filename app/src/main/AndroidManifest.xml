@@ -11,6 +11,7 @@
     <uses-permission android:name="pleos.car.permission.STT_SERVICE" /> <!-- SpeechToText (F8) -->
     <uses-permission android:name="pleos.car.permission.TTS_SERVICE" /> <!-- TextToSpeech (F8) -->
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />  <!-- NaviHelper 경로 정보 읽기 (N1~N3) -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" /> <!-- 함께 쉬기: 휴게소를 경유지로 추가 -->
     <!-- 같이 가기(컨보이): 일행 차량과 최근 상태를 주고받는다. 위치는 Pleos FusedLocation 서비스로 읽는다. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- FusedLocation. 사용자 동의가 필요한 권한이라 그룹에 들어갈 때 묻는다 (에뮬레이터 확인 11/16). -->
