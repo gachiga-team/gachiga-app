@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gachiga.app.AppContainer
 import com.gachiga.app.BuildConfig
+import com.gachiga.app.data.convoy.ConvoyException
+import com.gachiga.app.data.convoy.ConvoyMessage
+import com.gachiga.app.data.convoy.ConvoyState
 import com.gachiga.app.data.navi.NaviEvent
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
@@ -13,6 +16,8 @@ import com.gachiga.app.data.trip.TripDetail
 import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.VehicleCapabilities
 import com.gachiga.app.data.voice.VoiceIO
+import com.gachiga.app.domain.ConvoyGap
+import com.gachiga.app.domain.ConvoyMonitor
 import com.gachiga.app.domain.VoiceCommand
 import com.gachiga.app.domain.EnergyType
 import com.gachiga.app.domain.ExpenseCategory
@@ -39,6 +44,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class HomeUiState(
     val demoMode: Boolean = false,
@@ -75,6 +82,10 @@ sealed interface Overlay {
     data class EndedRefuelAmount(val tripId: Long, val refuel: Refuel) : Overlay
     /** F6: 끝난 여행의 인원 고치기 */
     data class EndedHeadcount(val tripId: Long) : Overlay
+    /** 같이 가기: 그룹 번호 넣기 */
+    data object GroupJoin : Overlay
+    /** 같이 가기: 내 그룹 번호 보여 주기 */
+    data class GroupCode(val code: String) : Overlay
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -276,13 +287,168 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** 다른 음성 대화가 끝난 뒤에 안내를 말한다 (끼어들지 않게). */
+    private val speakLock = Mutex()
+
+    /** 다른 음성 대화가 끝난 뒤에 안내를 말한다 (끼어들지 않게). 안내가 겹치면 차례로 말한다. */
     private fun announce(text: String) {
         viewModelScope.launch {
             voiceJob?.join()
-            voice.speak(text)
+            speakLock.withLock { voice.speak(text) }
         }
     }
+
+    // ---- 같이 가기 (컨보이 모드) ----
+
+    val convoy: StateFlow<ConvoyState?> = container.convoy.state
+
+    init {
+        // 일행 상태가 바뀌면 한 문장으로 알려 준다 (뒤처짐, 정차, 배터리 부족 등).
+        viewModelScope.launch { container.convoy.alerts.collect { announce(it.spoken()) } }
+        viewModelScope.launch { container.convoy.messages.collect { onConvoyMessage(it) } }
+        // 끝난 여행의 인원이나 금액을 고치면 그룹 합산 정산에도 반영한다.
+        viewModelScope.launch {
+            _summary.collect { d ->
+                val c = convoy.value
+                if (d != null && c != null && c.done && c.tripId == d.trip.id) {
+                    container.convoy.markDone(d.trip.id, d.result.totalCostWon, d.trip.headcount, d.result.distanceKm)
+                }
+            }
+        }
+        viewModelScope.launch { state.map { it.energyPercent }.distinctUntilChanged().collect { suggestRestIfLow(it) } }
+    }
+
+    private fun onConvoyMessage(m: ConvoyMessage) {
+        when (m.kind) {
+            "voice" -> announce("${m.from} 메시지예요. ${m.text}")
+            "rest" -> viewModelScope.launch {
+                // 함께 쉬기 제안: 다른 차량이 연료·배터리가 모자라 쉬어 가자고 한다.
+                voiceJob?.join()
+                runVoice {
+                    voice.speak("${m.from}가 다음 휴게소에서 함께 쉬자고 해요. ${m.text}예요. 함께 쉴까요?")
+                    if (listenCommand() == VoiceCommand.Yes) {
+                        container.convoy.send("rest-ok", "함께 쉬어요")
+                        voice.speak("함께 쉰다고 알렸어요.")
+                    }
+                }
+            }
+            "rest-ok" -> announce("${m.from}도 함께 쉬기로 했어요.")
+            "left" -> announce("${m.from}가 그룹에서 나갔어요.")
+        }
+    }
+
+    private var restAsked = false
+
+    /** 함께 쉬기 제안: 내 차의 연료·배터리가 20% 아래로 내려가면 일행에게 쉬어 가자고 할지 한 번 묻는다. */
+    private fun suggestRestIfLow(percent: Double?) {
+        percent ?: return
+        if (percent >= LOW_ENERGY + 5) restAsked = false
+        val c = convoy.value ?: return
+        if (percent >= LOW_ENERGY || restAsked || c.done || c.others.isEmpty() || state.value.live == null) return
+        restAsked = true
+        viewModelScope.launch {
+            voiceJob?.join()
+            runVoice {
+                val label = state.value.energyType.label()
+                voice.speak("${label}가 ${percent.toInt()}퍼센트예요. 일행에게 다음 휴게소에서 함께 쉬자고 할까요?")
+                if (listenCommand() == VoiceCommand.Yes) {
+                    val ok = container.convoy.send("rest", "$label ${percent.toInt()}퍼센트")
+                    voice.speak(if (ok) "일행에게 알렸어요." else "지금은 일행에게 알리지 못했어요.")
+                }
+            }
+        }
+    }
+
+    fun onGroupCreateClick() { viewModelScope.launch { createGroup() } }
+    fun onGroupJoinClick() { _overlay.value = Overlay.GroupJoin }
+    fun onGroupCodeClick() { convoy.value?.let { _overlay.value = Overlay.GroupCode(it.code) } }
+    fun onGroupLeaveClick() { viewModelScope.launch { leaveGroup() } }
+
+    fun onGroupCodeEntered(code: String) {
+        _overlay.value = null
+        viewModelScope.launch { joinGroup(code) }
+    }
+
+    /** 일행에게 말하기: 한 문장을 듣고 일행 차량에서 읽어 주게 한다. */
+    fun onGroupTalkClick() = runVoice {
+        voice.speak("일행에게 전할 말을 해 주세요.")
+        val text = listenText()?.trim()
+        if (text.isNullOrBlank()) voice.speak("잘 못 들었어요.") else sendMessage(text)
+    }
+
+    /** 정차 중이면 화면에도 보여 주고, 항상 음성으로 말한다. */
+    private suspend fun tell(text: String) {
+        if (!state.value.locked) _overlay.value = Overlay.Message(text)
+        voice.speak(text)
+    }
+
+    private suspend fun createGroup() {
+        if (state.value.live == null) { tell("여행을 시작한 뒤에 그룹을 만들 수 있어요."); return }
+        convoy.value?.let { tell("이미 그룹 ${spell(it.code)}에 있어요."); return }
+        container.convoy.create().fold(
+            onSuccess = { t ->
+                if (!state.value.locked) _overlay.value = Overlay.GroupCode(t.code)
+                voice.speak("그룹을 만들었어요. 그룹 번호는 ${spell(t.code)}예요.")
+            },
+            onFailure = { tell(groupError(it)) },
+        )
+    }
+
+    private suspend fun joinGroup(code: String?) {
+        if (state.value.live == null) { tell("여행을 시작한 뒤에 그룹에 참여할 수 있어요."); return }
+        convoy.value?.let { tell("이미 그룹 ${spell(it.code)}에 있어요."); return }
+        if (code == null) {
+            if (!state.value.locked) _overlay.value = Overlay.GroupJoin
+            else voice.speak("그룹 번호 네 자리를 함께 말해 주세요. 예를 들면 그룹 참여 일 이 삼 사.")
+            return
+        }
+        container.convoy.join(code).fold(
+            onSuccess = { t -> voice.speak("${t.label}로 그룹에 참여했어요. 여행하는 동안 일행과 위치를 나눠요.") },
+            onFailure = { tell(groupError(it)) },
+        )
+    }
+
+    private suspend fun leaveGroup() {
+        if (convoy.value == null) { voice.speak("참여한 그룹이 없어요."); return }
+        container.convoy.leave()
+        voice.speak("그룹에서 나왔어요. 위치 공유를 멈췄어요.")
+    }
+
+    private suspend fun sendMessage(text: String) {
+        if (convoy.value == null) { voice.speak("참여한 그룹이 없어요."); return }
+        val ok = container.convoy.send("voice", text)
+        voice.speak(if (ok) "일행에게 전했어요." else "지금은 전하지 못했어요.")
+    }
+
+    private fun groupError(e: Throwable): String = when ((e as? ConvoyException)?.reason) {
+        ConvoyException.Reason.NO_ROOM -> "그 번호의 그룹을 찾지 못했어요."
+        ConvoyException.Reason.FULL -> "그룹이 가득 찼어요."
+        else -> "일행 서버에 연결하지 못했어요. 잠시 뒤에 다시 해 주세요."
+    }
+
+    /** "일행 어디야"에 답한다. */
+    private fun groupStatusSpoken(c: ConvoyState): String {
+        if (c.others.isEmpty()) return "아직 그룹에 다른 차량이 없어요. 그룹 번호는 ${spell(c.code)}예요."
+        return c.others.joinToString(" ") { o ->
+            val gap = c.me?.let { ConvoyMonitor.gap(it, o) }
+            when {
+                o.done -> "${o.label}는 여행을 끝냈어요."
+                gap == null -> "${o.label} 위치는 아직 몰라요."
+                else -> "${o.label}는 ${spokenGap(gap)}"
+            }
+        }
+    }
+
+    private fun spokenGap(gap: ConvoyGap): String {
+        val d = if (gap.meters < 1000) "%.0f미터".format(gap.meters) else "%.1f킬로미터".format(gap.meters / 1000)
+        return when (gap.ahead) {
+            true -> "$d 앞에 있어요."
+            false -> "$d 뒤에 있어요."
+            null -> "$d 떨어져 있어요."
+        }
+    }
+
+    /** 그룹 번호를 한 자리씩 읽게 한다. */
+    private fun spell(code: String) = code.toCharArray().joinToString(", ")
 
     /** debug 빌드 전용: 내비에 테스트 경로를 건다. */
     fun onTestRouteClick() = container.navi.requestTestRoute(37.7639, 128.8994, "강릉역")
@@ -357,6 +523,11 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                 if (pending != null) applyRefuelAmount(pending.refuel.id, command.amountWon.toInt())
                 else voice.speak("어떤 비용인지 함께 말해 주세요. 예를 들면 통행료 삼천 원.")
             }
+            VoiceCommand.CreateGroup -> createGroup()
+            is VoiceCommand.JoinGroup -> joinGroup(command.code)
+            VoiceCommand.LeaveGroup -> leaveGroup()
+            VoiceCommand.GroupStatus -> voice.speak(convoy.value?.let { groupStatusSpoken(it) } ?: "참여한 그룹이 없어요.")
+            is VoiceCommand.SendMessage -> sendMessage(command.text)
             VoiceCommand.Yes, VoiceCommand.No, VoiceCommand.Unknown ->
                 voice.speak("잘 못 알아들었어요. 여행 시작, 통행료 얼마, 여행 종료처럼 말해 주세요.")
         }
@@ -392,6 +563,8 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     private suspend fun startTrip(headcount: Int) {
+        // 지난 여행의 그룹(정산용으로 남아 있던 것)은 새 여행을 시작할 때 정리한다.
+        if (state.value.live == null && convoy.value?.done == true) container.convoy.leave()
         when (val result = recorder.start(headcount)) {
             TripRecorder.StartResult.Started -> {
                 voice.speak("${headcount}명, 여행을 시작할게요.")
@@ -413,8 +586,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             return
         }
         val summary = container.history.detail(tripId) ?: return
-        _summary.value = summary
         val r = summary.result
+        // 같이 가기: 확정된 금액만 일행에게 남기고 위치 공유를 멈춘다.
+        container.convoy.markDone(tripId, r.totalCostWon, summary.trip.headcount, r.distanceKm)
+        _summary.value = summary
         val distance = "총 %.0f킬로미터를 달렸어요.".format(r.distanceKm)
         voice.speak(
             if (summary.trip.headcount > 1) "$distance 한 사람당 ${won(r.perPersonWon)}이에요."
@@ -481,7 +656,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.settings.setDemoMode(enabled) }
     }
 
-    fun demoDrive() = container.demoVehicle.drive(10.0)
+    fun demoDrive() {
+        container.demoVehicle.drive(10.0)
+        container.demoLocation.advance(10.0)
+    }
     fun demoPark() = container.demoVehicle.park()
     fun demoAddEnergy(percent: Double) = container.demoVehicle.addEnergy(percent)
 
@@ -492,6 +670,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     companion object {
         private const val REFUEL_PROMPT_MS = 30_000L
         private const val LOW_ARRIVAL_CHARGE = 15
+        private const val LOW_ENERGY = 20
         private const val FATIGUE_TICK_MS = 15_000L
 
         fun factory(container: AppContainer) = object : ViewModelProvider.Factory {

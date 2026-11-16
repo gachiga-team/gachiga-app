@@ -32,6 +32,24 @@ class SettlementShareTest {
     }
 
     @Test
+    fun `그룹 합산 정산이 있으면 QR에 함께 담는다`() {
+        val group = SettlementShare.Group(
+            code = "1234", myLabel = "1호차", totalCostWon = 60_000, headcount = 5, perPersonWon = 12_000, pending = false,
+            cars = listOf(SettlementShare.Car("1호차", 3, 40_000), SettlementShare.Car("2호차", 2, 20_000)),
+            transfers = listOf(SettlementShare.Transfer("2호차", "1호차", 4_000)),
+        )
+        val json = SettlementShare.json(sheet.copy(group = group))
+        assertTrue(json.contains("\"g\":{\"c\":\"1234\",\"me\":\"1호차\",\"tc\":60000,\"n\":5,\"pp\":12000,\"p\":0,"))
+        assertTrue(json.contains("\"cars\":[[\"1호차\",3,40000],[\"2호차\",2,20000]]"))
+        assertTrue(json.contains("\"tr\":[[\"2호차\",\"1호차\",4000]]"))
+
+        val text = SettlementShare.plainText(sheet.copy(group = group))
+        assertTrue(text.contains("그룹 1234 합산: 총 60,000원 / 5명 = 1인 12,000원"))
+        assertTrue(text.contains("2호차 운전자 → 1호차 운전자 4,000원"))
+        assertTrue(!text.contains("동승자 1인당 운전자에게 5,180원")) // 차량 1대 기준 금액은 헷갈리지 않게 뺀다
+    }
+
+    @Test
     fun `웹 주소가 없으면 url은 null이고 글자 정산서를 쓴다`() {
         assertNull(SettlementShare.url("", sheet))
         val text = SettlementShare.plainText(sheet)

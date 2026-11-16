@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gachiga.app.BuildConfig
+import com.gachiga.app.data.convoy.ConvoyState
 import com.gachiga.app.data.trip.Refuel
 import com.gachiga.app.data.trip.TripDetail
 import com.gachiga.app.domain.InputMethod
@@ -47,6 +48,7 @@ import java.util.Locale
 @Composable
 fun SummaryScreen(
     detail: TripDetail,
+    convoy: ConvoyState?,
     onRefuelClick: (Refuel) -> Unit,
     onHeadcountClick: () -> Unit,
     onExpenseDelete: (Long) -> Unit,
@@ -67,8 +69,13 @@ fun SummaryScreen(
     ) {
         Text("${tripTitle(trip.destinationName)} 정산 · ${dateRange(trip.startedAt, trip.endedAt)}", style = MaterialTheme.typography.headlineMedium)
 
+        // 같이 가기로 간 여행이면 여러 차량 합산 정산을 먼저 보여 준다.
+        val group = convoy?.takeIf { it.tripId == trip.id && it.others.isNotEmpty() }
+
         // 1. 누가 누구에게 얼마
-        if (trip.headcount > 1) {
+        if (group != null) {
+            GroupSettlementCard(group, r.totalCostWon, trip.headcount)
+        } else if (trip.headcount > 1) {
             Text(
                 "동승자 ${trip.headcount - 1}명이 각자 운전자에게 ${won(r.perPersonWon)}",
                 style = MaterialTheme.typography.displayMedium,
@@ -87,7 +94,7 @@ fun SummaryScreen(
             SecondaryButton("인원 고치기 (${trip.headcount}명)", onHeadcountClick)
         }
         if (showQr) {
-            val sheet = shareSheet(detail, priceBasis)
+            val sheet = shareSheet(detail, priceBasis).copy(group = group?.let { groupShare(it, r.totalCostWon, trip.headcount) })
             val url = SettlementShare.url(BuildConfig.SETTLE_URL, sheet)
             QrDialog(content = url ?: SettlementShare.plainText(sheet), isWebLink = url != null, onDismiss = { showQr = false })
         }

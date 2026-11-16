@@ -41,6 +41,24 @@ class VoiceCommandTest {
     }
 
     @Test
+    fun `그룹 명령`() {
+        assertEquals(VoiceCommand.CreateGroup, parse("그룹 만들어 줘"))
+        assertEquals(VoiceCommand.JoinGroup("1234"), parse("그룹 참여 1234"))
+        assertEquals(VoiceCommand.JoinGroup("1204"), parse("그룹 참여 일이공사"))
+        assertEquals(VoiceCommand.JoinGroup(null), parse("그룹 참여"))
+        assertEquals(VoiceCommand.LeaveGroup, parse("그룹 나가기"))
+        assertEquals(VoiceCommand.GroupStatus, parse("일행 어디야"))
+    }
+
+    @Test
+    fun `일행에게 보내는 메시지는 다른 명령보다 먼저 본다`() {
+        assertEquals(VoiceCommand.SendMessage("다음 휴게소에서 쉬자"), parse("메시지 다음 휴게소에서 쉬자"))
+        assertEquals(VoiceCommand.SendMessage("천천히 와"), parse("일행에게 천천히 와라고 전해 줘"))
+        assertEquals(VoiceCommand.SendMessage("여행 시작하자"), parse("메시지 여행 시작하자"))
+        assertEquals(VoiceCommand.Unknown, parse("메시지"))
+    }
+
+    @Test
     fun `알아듣지 못한 말`() {
         assertEquals(VoiceCommand.Unknown, parse("오늘 날씨 어때"))
         assertEquals(VoiceCommand.Unknown, parse(""))

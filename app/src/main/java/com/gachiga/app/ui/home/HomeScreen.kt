@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gachiga.app.data.convoy.ConvoyState
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
 import com.gachiga.app.domain.EnergyType
@@ -42,12 +43,13 @@ fun HomeScreen(vm: HomeViewModel) {
     val history by vm.history.collectAsStateWithLifecycle()
     val settingsOpen by vm.settingsOpen.collectAsStateWithLifecycle()
     val vehicleSettings by vm.vehicleSettings.collectAsStateWithLifecycle()
+    val convoy by vm.convoy.collectAsStateWithLifecycle()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         // F7: 주행 중(또는 판별 불가)이면 입력 UI와 대화상자를 모두 숨긴다.
         // 차량 값을 하나도 읽지 못하면 기록할 것이 없으므로 잠그지 않는다 (spec.md 3.2-4).
         if (state.locked) {
-            DrivingModeScreen(state, onClick = vm::onVoiceClick, onDemoPark = vm::demoPark)
+            DrivingModeScreen(state, convoyDrivingLine(convoy), onClick = vm::onVoiceClick, onDemoPark = vm::demoPark)
             return@Surface
         }
 
@@ -66,14 +68,15 @@ fun HomeScreen(vm: HomeViewModel) {
             )
             currentSummary != null -> SummaryScreen(
                 detail = currentSummary,
+                convoy = convoy,
                 onRefuelClick = vm::onEndedRefuelClick,
                 onHeadcountClick = vm::onEndedHeadcountClick,
                 onExpenseDelete = vm::onEndedExpenseDelete,
                 onDone = vm::dismissSummary,
             )
             history != null -> HistoryScreen(history!!, onItemClick = vm::onHistoryItemClick, onBack = vm::dismissHistory)
-            state.live != null -> TripScreen(state, state.live!!, vm)
-            else -> IdleScreen(state, vehicleSettings, vm)
+            state.live != null -> TripScreen(state, state.live!!, convoy, vm)
+            else -> IdleScreen(state, vehicleSettings, convoy, vm)
         }
 
         when (val o = overlay) {
@@ -101,6 +104,8 @@ fun HomeScreen(vm: HomeViewModel) {
             }
             Overlay.ConfirmEnd -> ConfirmEndDialog(onConfirm = vm::onEndConfirmed, onDismiss = vm::dismissOverlay)
             is Overlay.Message -> MessageDialog(o.text, onDismiss = vm::dismissOverlay)
+            Overlay.GroupJoin -> GroupJoinDialog(onConfirm = vm::onGroupCodeEntered, onDismiss = vm::dismissOverlay)
+            is Overlay.GroupCode -> GroupCodeDialog(o.code, onDismiss = vm::dismissOverlay)
             is Overlay.EndedRefuelAmount -> AmountDialog(
                 title = "${state.energyType.refuelWord()} 금액",
                 subtitle = "%.0f%% → %.0f%%".format(o.refuel.percentBefore, o.refuel.percentAfter),
@@ -122,7 +127,7 @@ fun HomeScreen(vm: HomeViewModel) {
  * 2초 안에 읽히도록 문장 대신 숫자만 크게 보여 준다.
  */
 @Composable
-private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPark: () -> Unit) {
+private fun DrivingModeScreen(state: HomeUiState, convoyLine: String?, onClick: () -> Unit, onDemoPark: () -> Unit) {
     val live = state.live
     Box(Modifier.fillMaxSize().padding(CarDimens.screenPadding), contentAlignment = Alignment.Center) {
         Column(
@@ -147,6 +152,10 @@ private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPar
                     Text("\"여행 시작, 3명\"처럼 말해 보세요", style = MaterialTheme.typography.bodyLarge, color = SubtleText)
                 }
             }
+            // 같이 가기: 일행과의 거리를 한 줄로만 보여 준다. 나머지는 음성으로 알린다.
+            if (convoyLine != null) {
+                Text(convoyLine, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.secondary)
+            }
             // F7: 주행 중 입력은 음성 버튼 하나뿐이다.
             TalkButton(state, onClick, wide = true)
             // 데모 모드에서만: 차량 동작(정차)을 흉내 내는 버튼. 실제 차량에서는 보이지 않는다.
@@ -157,7 +166,7 @@ private fun DrivingModeScreen(state: HomeUiState, onClick: () -> Unit, onDemoPar
 
 /** 여행이 없을 때 (정차 중). 주요 버튼 2개(여행 시작, 말하기) + 보조 버튼 2개(지난 여행, 차량 설정). */
 @Composable
-private fun IdleScreen(state: HomeUiState, settings: VehicleSettings, vm: HomeViewModel) {
+private fun IdleScreen(state: HomeUiState, settings: VehicleSettings, convoy: ConvoyState?, vm: HomeViewModel) {
     Column(
         Modifier.fillMaxSize().padding(CarDimens.screenPadding).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(CarDimens.gap),
@@ -203,13 +212,22 @@ private fun IdleScreen(state: HomeUiState, settings: VehicleSettings, vm: HomeVi
             SecondaryButton("지난 여행", vm::onHistoryClick)
             SecondaryButton("차량 설정", vm::onSettingsClick)
         }
+        // 같이 가기: 여행을 끝낸 뒤에도 합산 정산을 위해 그룹에 남아 있다. 위치는 더 나누지 않는다.
+        if (convoy != null) {
+            Text(
+                "그룹 ${convoy.code} 합산 정산을 위해 그룹에 남아 있어요. 위치는 나누지 않아요. 새 여행을 시작하면 그룹에서 나가요.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SubtleText,
+            )
+            ButtonRow { SecondaryButton("그룹 나가기", vm::onGroupLeaveClick) }
+        }
         if (state.demoMode) DemoPanel(vm)
     }
 }
 
 /** 여행 중, 정차 상태. 큰 숫자 칸 3개 + 주요 버튼(말하기, 비용 추가) + 보조 버튼(일시정지, 종료). */
 @Composable
-private fun TripScreen(state: HomeUiState, live: LiveTrip, vm: HomeViewModel) {
+private fun TripScreen(state: HomeUiState, live: LiveTrip, convoy: ConvoyState?, vm: HomeViewModel) {
     val type = live.trip.energyType
     val settlement = live.settlement()
     val usedAmount = live.energyUsedPercent / 100.0 * live.trip.capacity
@@ -264,6 +282,7 @@ private fun TripScreen(state: HomeUiState, live: LiveTrip, vm: HomeViewModel) {
             // F5: 정차 중에만 끝낼 수 있다
             SecondaryButton("여행 종료", vm::onEndClick, enabled = state.motion == MotionState.PARKED)
         }
+        ConvoyPanel(convoy, state.canListen, state.listening, vm)
         if (state.demoMode) DemoPanel(vm)
     }
 }

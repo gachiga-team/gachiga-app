@@ -1,6 +1,11 @@
 package com.gachiga.app
 
 import android.content.Context
+import com.gachiga.app.data.convoy.ConvoyApi
+import com.gachiga.app.data.convoy.ConvoyManager
+import com.gachiga.app.data.location.DemoLocationSource
+import com.gachiga.app.data.location.LocationSource
+import com.gachiga.app.data.location.PleosLocationSource
 import com.gachiga.app.data.navi.NaviSource
 import com.gachiga.app.data.settings.VehicleSettingsRepository
 import com.gachiga.app.data.trip.AppDatabase
@@ -46,6 +51,17 @@ class AppContainer(context: Context) {
 
     val recorder: TripRecorder by lazy {
         TripRecorder(database.tripDao(), settings, ::vehicleSource, appScope)
+    }
+
+    val demoLocation = DemoLocationSource()
+
+    val pleosLocation: PleosLocationSource by lazy { PleosLocationSource(appContext).also { it.initialize() } }
+
+    fun locationSource(demoMode: Boolean): LocationSource = if (demoMode) demoLocation else pleosLocation
+
+    /** 같이 가기(컨보이): 일행 차량과 최근 상태를 주고받는다. */
+    val convoy: ConvoyManager by lazy {
+        ConvoyManager(appContext, ConvoyApi(BuildConfig.CONVOY_URL), appScope, settings, ::vehicleSource, ::locationSource, recorder)
     }
 
     /** F8: Pleos STT·TTS ON_DEVICE. 초기화에 실패하면 canListen/canSpeak가 false로 남아 터치로 대체한다. */

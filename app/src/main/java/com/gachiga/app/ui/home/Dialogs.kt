@@ -112,6 +112,50 @@ fun AmountDialog(
     }
 }
 
+/** 같이 가기: 내 그룹 번호. 일행 차량에서 이 번호로 참여한다. */
+@Composable
+fun GroupCodeDialog(code: String, onDismiss: () -> Unit) {
+    CarDialog(onDismiss) {
+        Text("그룹 번호", style = MaterialTheme.typography.headlineMedium)
+        Text(code.toCharArray().joinToString(" "), style = MaterialTheme.typography.displayLarge)
+        Text("일행 차량에서 '그룹 참여'를 누르고 이 번호를 넣어 주세요.", style = MaterialTheme.typography.bodyMedium)
+        Text("여행하는 동안 일행과 위치를 나누고, 여행을 끝내면 자동으로 멈춰요.", style = MaterialTheme.typography.bodyMedium)
+        Button(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) {
+            Text("확인", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/** 같이 가기: 그룹 번호 네 자리를 넣어 참여한다. 참여하면 위치 공유에 동의하는 것임을 알린다. */
+@Composable
+fun GroupJoinDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var digits by remember { mutableStateOf("") }
+    CarDialog(onDismiss) {
+        Text("그룹 번호를 넣어 주세요", style = MaterialTheme.typography.headlineMedium)
+        Text("참여하면 여행하는 동안 일행과 위치를 나눠요. 여행을 끝내면 자동으로 멈춰요.", style = MaterialTheme.typography.bodyMedium)
+        Text(digits.padEnd(4, '·').toCharArray().joinToString(" "), style = MaterialTheme.typography.displayMedium)
+        val keys = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("0", "←"))
+        for (row in keys) {
+            Row(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
+                for (key in row) {
+                    OutlinedButton(
+                        onClick = { digits = if (key == "←") digits.dropLast(1) else (digits + key).take(4) },
+                        modifier = Modifier.widthIn(min = 120.dp).heightIn(min = CarDimens.touch),
+                    ) { Text(key, style = MaterialTheme.typography.labelLarge) }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(CarDimens.gap)) {
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.heightIn(min = CarDimens.touch)) { Text("취소") }
+            Button(
+                onClick = { onConfirm(digits) },
+                enabled = digits.length == 4,
+                modifier = Modifier.heightIn(min = CarDimens.touch),
+            ) { Text("참여") }
+        }
+    }
+}
+
 @Composable
 fun ConfirmEndDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
