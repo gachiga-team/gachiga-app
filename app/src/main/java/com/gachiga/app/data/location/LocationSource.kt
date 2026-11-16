@@ -7,6 +7,9 @@ import android.content.Context
 import android.util.Log
 import com.gachiga.app.domain.Geo
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,16 +73,25 @@ class PleosLocationSource(context: Context) : LocationSource {
                     Log.w(TAG, "FusedLocation error", exception)
                 }
             }
-            runCatching {
-                fused.getLastKnownLocation(listener)
-                fused.registerFusedLocationCallback(listener)
-            }.onFailure { Log.w(TAG, "FusedLocation register failed", it) }
+            // 권한(pleos.car.permission.FUSED_LOCATION)을 아직 못 받았으면 SecurityException이 난다.
+            // 사용자가 나중에 동의할 수 있으므로 될 때까지 가끔 다시 등록해 본다.
+            launch {
+                while (isActive) {
+                    val ok = runCatching {
+                        fused.getLastKnownLocation(listener)
+                        fused.registerFusedLocationCallback(listener)
+                    }.onFailure { Log.w(TAG, "FusedLocation register failed: ${it.message}") }.isSuccess
+                    if (ok) break
+                    delay(RETRY_MS)
+                }
+            }
             awaitClose { runCatching { fused.unregisterFusedLocationCallback(listener) } }
         }
     }
 
     private companion object {
         const val TAG = "PleosLocation"
+        const val RETRY_MS = 3_000L
     }
 }
 

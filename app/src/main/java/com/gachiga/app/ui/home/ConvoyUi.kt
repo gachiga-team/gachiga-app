@@ -49,6 +49,9 @@ fun ConvoyPanel(convoy: ConvoyState?, canListen: Boolean, listening: Boolean, vm
         color = SubtleText,
     )
     ButtonRow {
+        if (!convoy.sharingLocation && !convoy.done && vm.needsLocationPermission()) {
+            SecondaryButton("위치 나누기 켜기", vm::onShareLocationClick)
+        }
         if (canListen) SecondaryButton("일행에게 말하기", vm::onGroupTalkClick, enabled = !listening)
         SecondaryButton("그룹 번호", vm::onGroupCodeClick)
         SecondaryButton("그룹 나가기", vm::onGroupLeaveClick)

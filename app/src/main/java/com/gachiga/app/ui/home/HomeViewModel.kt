@@ -31,7 +31,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -358,14 +361,44 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun onGroupCreateClick() { viewModelScope.launch { createGroup() } }
+    /** 위치 권한 동의 창을 띄워 달라는 요청. 화면이 받아서 시스템 창을 연다. */
+    private val _permissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val permissionRequests: SharedFlow<Unit> = _permissionRequests.asSharedFlow()
+    private var afterPermission: (suspend () -> Unit)? = null
+
+    /** 위치를 나누려면 사용자 동의가 필요하다. 아직이면 먼저 묻고, 답과 상관없이 [block]을 이어서 한다. */
+    private fun withLocationPermission(block: suspend () -> Unit) {
+        if (state.value.demoMode || state.value.locked || container.hasLocationPermission()) {
+            viewModelScope.launch { block() }
+            return
+        }
+        afterPermission = block
+        _permissionRequests.tryEmit(Unit)
+    }
+
+    fun onLocationPermissionResult(granted: Boolean) {
+        val block = afterPermission
+        afterPermission = null
+        viewModelScope.launch {
+            block?.invoke()
+            if (!granted) announce("위치 권한이 없어서 내 위치는 나누지 않아요.")
+        }
+    }
+
+    /** 그룹에는 들어왔지만 위치 권한이 없을 때 누르는 버튼. */
+    fun onShareLocationClick() = withLocationPermission { }
+
+    /** 그룹 화면에 "위치 나누기 켜기" 버튼을 보일지. */
+    fun needsLocationPermission(): Boolean = !state.value.demoMode && !container.hasLocationPermission()
+
+    fun onGroupCreateClick() = withLocationPermission { createGroup() }
     fun onGroupJoinClick() { _overlay.value = Overlay.GroupJoin }
     fun onGroupCodeClick() { convoy.value?.let { _overlay.value = Overlay.GroupCode(it.code) } }
     fun onGroupLeaveClick() { viewModelScope.launch { leaveGroup() } }
 
     fun onGroupCodeEntered(code: String) {
         _overlay.value = null
-        viewModelScope.launch { joinGroup(code) }
+        withLocationPermission { joinGroup(code) }
     }
 
     /** 일행에게 말하기: 한 문장을 듣고 일행 차량에서 읽어 주게 한다. */

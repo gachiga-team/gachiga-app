@@ -1,5 +1,7 @@
 package com.gachiga.app.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +19,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gachiga.app.AppContainer
 import com.gachiga.app.data.convoy.ConvoyState
 import com.gachiga.app.data.settings.VehicleSettings
 import com.gachiga.app.data.trip.LiveTrip
@@ -44,6 +48,12 @@ fun HomeScreen(vm: HomeViewModel) {
     val settingsOpen by vm.settingsOpen.collectAsStateWithLifecycle()
     val vehicleSettings by vm.vehicleSettings.collectAsStateWithLifecycle()
     val convoy by vm.convoy.collectAsStateWithLifecycle()
+
+    // 같이 가기: 위치 권한 동의 창. 그룹에 들어갈 때 한 번 묻는다.
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        vm.onLocationPermissionResult(granted)
+    }
+    LaunchedEffect(Unit) { vm.permissionRequests.collect { locationPermission.launch(AppContainer.LOCATION_PERMISSION) } }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         // F7: 주행 중(또는 판별 불가)이면 입력 UI와 대화상자를 모두 숨긴다.

@@ -11,6 +11,7 @@ import com.gachiga.app.domain.ConvoyAlert
 import com.gachiga.app.domain.ConvoyMember
 import com.gachiga.app.domain.ConvoyMonitor
 import com.gachiga.app.domain.EnergyType
+import com.gachiga.app.domain.Geo
 import com.gachiga.app.domain.MotionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -204,8 +205,24 @@ class ConvoyManager(
                     vehicle.motion().onStart { emit(MotionState.UNKNOWN) },
                 ) { loc, energy, motion -> Car(loc, energy, motion, type == EnergyType.EV) }
             }
-        }.collect { car = it }
+        }.collect { c ->
+            val loc = c.location
+            val prev = lastFix
+            if (loc != null) {
+                if (prev == null) {
+                    lastFix = loc
+                } else if (Geo.distanceMeters(prev.lat, prev.lon, loc.lat, loc.lon) >= HEADING_MIN_MOVE_M) {
+                    movedHeading = Geo.bearingDegrees(prev.lat, prev.lon, loc.lat, loc.lon)
+                    lastFix = loc
+                }
+            }
+            car = c
+        }
     }
+
+    /** 진행 방향을 구할 때 기준으로 삼는 지난 위치 하나. 저장하지 않고 메모리에만 둔다. */
+    private var lastFix: CarLocation? = null
+    @Volatile private var movedHeading: Double? = null
 
     private fun upload(): ConvoyUpload {
         val c = car
@@ -224,7 +241,8 @@ class ConvoyManager(
         return ConvoyUpload(
             lat = loc?.lat,
             lon = loc?.lon,
-            heading = loc?.heading,
+            // SDK가 주는 방향이 0뿐이면(에뮬레이터) 실제로 움직인 방향을 쓴다.
+            heading = loc?.let { l -> movedHeading ?: l.heading?.takeIf { it != 0.0 } },
             moving = moving,
             energyPercent = c.energyPercent?.toInt(),
             ev = c.ev,
@@ -267,6 +285,7 @@ class ConvoyManager(
         const val TAG = "Convoy"
         const val INTERVAL_MS = 3_000L
         const val DONE_INTERVAL_MS = 10_000L
+        const val HEADING_MIN_MOVE_M = 30.0
         const val K_CODE = "code"
         const val K_KEY = "key"
         const val K_ID = "id"

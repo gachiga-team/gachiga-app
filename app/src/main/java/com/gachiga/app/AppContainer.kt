@@ -57,11 +57,19 @@ class AppContainer(context: Context) {
 
     val pleosLocation: PleosLocationSource by lazy { PleosLocationSource(appContext).also { it.initialize() } }
 
+    /** 위치 권한을 받았는지. 사용자 동의가 필요한 권한이다. */
+    fun hasLocationPermission(): Boolean =
+        appContext.checkSelfPermission(LOCATION_PERMISSION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
     fun locationSource(demoMode: Boolean): LocationSource = if (demoMode) demoLocation else pleosLocation
 
     /** 같이 가기(컨보이): 일행 차량과 최근 상태를 주고받는다. */
     val convoy: ConvoyManager by lazy {
         ConvoyManager(appContext, ConvoyApi(BuildConfig.CONVOY_URL), appScope, settings, ::vehicleSource, ::locationSource, recorder)
+    }
+
+    companion object {
+        const val LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
     }
 
     /** F8: Pleos STT·TTS ON_DEVICE. 초기화에 실패하면 canListen/canSpeak가 false로 남아 터치로 대체한다. */
