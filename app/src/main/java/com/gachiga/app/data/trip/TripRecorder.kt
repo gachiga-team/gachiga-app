@@ -88,7 +88,7 @@ class TripRecorder(
                 val trip = dao.ongoingTrip() ?: return@withLock
                 val segments = dao.segments(trip.id)
                 _live.value = LiveTrip(trip, segments, dao.refuels(trip.id), dao.expenses(trip.id))
-                lastOdometerKm = segments.lastOrNull()?.let { it.endOdometerKm ?: it.startOdometerKm }
+                lastOdometerKm = segments.lastOrNull()?.let { maxOf(it.endOdometerKm ?: it.startOdometerKm, it.startOdometerKm) }
                 Log.i(TAG, "resumed trip ${trip.id} (${trip.status})")
             }
             startTracking()
@@ -274,8 +274,15 @@ class TripRecorder(
         val now = clock()
         when (event) {
             is Event.Odometer -> {
-                lastOdometerKm = event.km
-                updateOpenSegment { it.copy(endOdometerKm = event.km) }
+                val previous = lastOdometerKm
+                if (previous != null && event.km < previous - ODOMETER_RESET_KM) {
+                    // 주행거리는 줄어들 수 없다. 줄었다면 값이 초기화된 것이다 (에뮬레이터 재시작, 계기판 교체 등).
+                    // 지금까지의 구간을 닫고 새 값에서 다시 시작해서, 이동 거리가 음수가 되지 않게 한다.
+                    restartSegmentAt(event.km, now)
+                } else {
+                    lastOdometerKm = event.km
+                    updateOpenSegment { it.copy(endOdometerKm = event.km) }
+                }
             }
             is Event.Energy -> {
                 lastEnergyPercent = event.percent
@@ -323,6 +330,21 @@ class TripRecorder(
         _dayStarted.tryEmit(day)
     }
 
+    private suspend fun restartSegmentAt(odometerKm: Double, now: Long) {
+        val live = _live.value ?: return
+        Log.w(TAG, "odometer went back: $lastOdometerKm → $odometerKm")
+        val open = live.segments.lastOrNull()?.takeIf { it.endedAt == null }
+        if (open == null) { // 일시정지 중: 다시 시작할 때 새 값에서 출발한다
+            lastOdometerKm = odometerKm
+            return
+        }
+        val closed = closeOpenSegment(live) // 닫는 구간의 끝은 줄어들기 전 값
+        lastOdometerKm = odometerKm
+        val segment = Segment(tripId = live.trip.id, dayIndex = open.dayIndex, startedAt = now, startOdometerKm = odometerKm, endOdometerKm = odometerKm)
+        val id = dao.insertSegment(segment)
+        _live.value = closed.copy(segments = closed.segments + segment.copy(id = id))
+    }
+
     private fun updateOpenSegment(change: (Segment) -> Segment) {
         val live = _live.value ?: return
         val open = live.segments.lastOrNull()?.takeIf { it.endedAt == null } ?: return
@@ -368,5 +390,6 @@ class TripRecorder(
         const val READ_TIMEOUT_MS = 8_000L
         const val TICK_MS = 5_000L
         const val FLUSH_MS = 10_000L
+        const val ODOMETER_RESET_KM = 1.0
     }
 }
