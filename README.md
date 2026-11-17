@@ -200,9 +200,11 @@ node tools/demo/make_video.mjs out/demo out/demo/gachiga_demo.mp4
 
 정산 화면의 **QR 정산서**를 동승자가 폰으로 찍으면 [`web/settle/index.html`](web/settle/index.html)이 열린다. 서버는 없고, 정산 내용은 주소의 `#` 뒤에 담긴다.
 
-웹 페이지를 켜는 방법:
-1. GitHub 저장소 Settings → Pages → Branch `main`, 폴더 `/ (root)`로 저장한다.
-2. `gradle.properties`에 주소를 넣는다: `gachiga.settleUrl=https://<계정>.github.io/<저장소>/web/settle/`
+웹 페이지는 GitHub Pages로 열려 있다: `https://gachiga-team.github.io/gachiga-app/web/settle/` (주소만 열면 "정산서 내용을 읽지 못했어요"라고 나온다. 내용은 QR에 들어 있다.)
+
+다른 저장소에서 쓰려면:
+1. GitHub 저장소 Settings → Pages에서 브랜치와 폴더 `/ (root)`를 고른다 (이 저장소는 `dev` 브랜치).
+2. `gradle.properties`의 `gachiga.settleUrl`을 그 주소로 바꾼다: `https://<계정>.github.io/<저장소>/web/settle/`
 3. 다시 빌드한다. 주소가 비어 있으면 QR에 정산 내용을 글자로 담는다 (폰 카메라로 찍으면 글로 보인다).
 
 ### 송금 버튼

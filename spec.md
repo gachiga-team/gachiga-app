@@ -452,7 +452,8 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 
 - `apk/TeamGachiGa_GachiGa_release.apk`를 v0.2.0(versionCode 2)으로 다시 빌드했다. 서명 확인(`CN=GachiGa`), 권한: CAR_DRIVE, CAR_ENERGY, STT_SERVICE, TTS_SERVICE, NAVI_ROUTE, NAVI_ROUTE_SEARCH, FUSED_LOCATION, INTERNET. **에뮬레이터에 설치해 실행해 보지는 못했다.**
 - 웹 정산서에 송금 버튼(금액 복사, 토스 열기, 카카오페이 열기)을 넣었다. 실제 폰에서 송금 앱이 열리는지는 확인하지 않았다.
-- GitHub Pages는 아직 켜지 않았다(저장소 설정 변경이라 사용자 확인 필요). 켜기 전까지 QR에는 정산 내용이 글자로 담긴다. 켠 뒤에는 `gradle.properties`에 `gachiga.settleUrl=https://gachiga-team.github.io/gachiga-app/web/settle/`를 넣고 다시 빌드한다. main은 11/23까지 그대로 두므로 Pages 소스는 dev 브랜치로 해야 그룹 정산이 보인다.
+- GitHub Pages를 켰다(11/17, 사용자 승인, 소스는 dev 브랜치 루트). 웹 정산서 주소는 `https://gachiga-team.github.io/gachiga-app/web/settle/`이고 `gradle.properties`의 `gachiga.settleUrl`에 넣었다. 이제 QR에는 이 주소와 `#` 뒤의 정산 내용이 담긴다. 실제 주소에서 그룹 합산 정산서(4,800원, 1호차 → 2호차 5,558원)가 폰 너비로 제대로 보이는 것을 확인했다. APK도 이 주소를 넣어 다시 빌드했다.
+- 주의: Pages 소스가 dev라서 dev를 지우거나 main으로 합친 뒤에는 Pages 소스 브랜치를 바꿔야 한다.
 
 아직 확인하지 않은 것: 일차 분할 실제 동작, 경유지를 넣기 직전의 목적지 확인, 에뮬레이터 두 대 동시 실행, "그룹 참여" 번호 입력 화면, 3km 벌어짐 알림 문장, 함께 쉬기 제안 대화(음성 인식 필요), 사람 목소리로 하는 그룹 음성 명령, QR 그룹 정산서를 폰으로 찍어 보기
 
