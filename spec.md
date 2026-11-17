@@ -448,6 +448,12 @@ Pleos 에뮬레이터 + Virtual Console(전기차)로 확인했다.
 - **주행거리가 줄어들면 이동 거리가 음수로 나오던 문제.** 에뮬레이터를 다시 켜면 주행거리가 0으로 돌아가 "-60 km"가 됐다. 주행거리가 1km 넘게 줄면 구간을 닫고 새 값에서 다시 시작한다.
 - 이날 에뮬레이터는 차량 서비스가 "CarServiceHelper did not connect"로 계속 다시 시작되는 상태였다(호스트 부하 16 이상). 이 상태에서는 앱이 "차량 정보를 확인하는 중"에 머문다. 에뮬레이터를 Cold Boot로 다시 켜고 부하가 가라앉은 뒤 시험해야 한다.
 
+제출물 갱신 (2026-11-17, dev 브랜치):
+
+- `apk/TeamGachiGa_GachiGa_release.apk`를 v0.2.0(versionCode 2)으로 다시 빌드했다. 서명 확인(`CN=GachiGa`), 권한: CAR_DRIVE, CAR_ENERGY, STT_SERVICE, TTS_SERVICE, NAVI_ROUTE, NAVI_ROUTE_SEARCH, FUSED_LOCATION, INTERNET. **에뮬레이터에 설치해 실행해 보지는 못했다.**
+- 웹 정산서에 송금 버튼(금액 복사, 토스 열기, 카카오페이 열기)을 넣었다. 실제 폰에서 송금 앱이 열리는지는 확인하지 않았다.
+- GitHub Pages는 아직 켜지 않았다(저장소 설정 변경이라 사용자 확인 필요). 켜기 전까지 QR에는 정산 내용이 글자로 담긴다. 켠 뒤에는 `gradle.properties`에 `gachiga.settleUrl=https://gachiga-team.github.io/gachiga-app/web/settle/`를 넣고 다시 빌드한다. main은 11/23까지 그대로 두므로 Pages 소스는 dev 브랜치로 해야 그룹 정산이 보인다.
+
 아직 확인하지 않은 것: 일차 분할 실제 동작, 경유지를 넣기 직전의 목적지 확인, 에뮬레이터 두 대 동시 실행, "그룹 참여" 번호 입력 화면, 3km 벌어짐 알림 문장, 함께 쉬기 제안 대화(음성 인식 필요), 사람 목소리로 하는 그룹 음성 명령, QR 그룹 정산서를 폰으로 찍어 보기
 
 남은 일: 휴게소 목록에서 고속도로 휴게소만 거르기, 일차 분할·하루 요약, GitHub Pages·release APK, 서버 배포(https) 여부 결정, PT 자료

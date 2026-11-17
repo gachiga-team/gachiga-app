@@ -29,6 +29,8 @@
   .total { font-weight: 700; }
   button { margin-top: 14px; width: 100%; min-height: 48px; border: 0; border-radius: 12px;
            background: var(--accent); color: #fff; font-size: 16px; font-weight: 600; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); margin-top: 10px; }
+  .pay { display: flex; gap: 10px; }
   .note { color: var(--sub); font-size: 13px; margin-top: 18px; }
   .error { color: var(--warn); }
 </style>
@@ -51,6 +53,29 @@
     r.appendChild(left);
     r.appendChild(el('span', 'amt', amount));
     return r;
+  };
+
+  // 보낼 금액을 복사하고 송금 앱을 여는 버튼. 받는 사람은 송금 앱에서 직접 고른다.
+  // 계좌나 연락처는 정산서에 담지 않는다 (누가 찍어도 개인 정보가 드러나지 않게).
+  var payButtons = function (amount) {
+    var box = el('div');
+    var copy = el('button', null, '금액 복사 (' + won(amount) + ')');
+    copy.onclick = function () {
+      navigator.clipboard && navigator.clipboard.writeText(String(amount)).then(function () { copy.textContent = '복사했어요'; });
+    };
+    box.appendChild(copy);
+    var pay = el('div', 'pay');
+    [['토스 열기', 'supertoss://send?amount=' + amount], ['카카오페이 열기', 'kakaotalk://kakaopay/home']].forEach(function (p) {
+      var b = el('button', 'ghost', p[0]);
+      b.onclick = function () {
+        navigator.clipboard && navigator.clipboard.writeText(String(amount));
+        location.href = p[1];
+      };
+      pay.appendChild(b);
+    });
+    box.appendChild(pay);
+    box.appendChild(el('div', 'basis', '금액을 복사한 뒤 송금 앱을 열어요. 받는 사람은 앱에서 골라 주세요.'));
+    return box;
   };
 
   var s;
@@ -77,6 +102,7 @@
     head.appendChild(el('div', 'big', won(g.pp)));
     head.appendChild(el('div', 'basis', '전체 ' + won(g.tc) + ' ÷ ' + g.n + '명 (10원 미만은 비용이 가장 큰 차량이 부담)'));
     if (g.p) head.appendChild(el('div', 'basis', '아직 달리는 차량이 있어 금액이 바뀔 수 있어요.'));
+    head.appendChild(payButtons(g.pp));
     app.appendChild(head);
     var cars = el('div', 'card');
     (g.cars || []).forEach(function (c) {
@@ -94,11 +120,7 @@
     head.appendChild(el('div', null, '동승자 1명당 운전자에게'));
     head.appendChild(el('div', 'big', won(s.pp)));
     head.appendChild(el('div', 'basis', '운전자 부담 ' + won(s.ds) + ' (10원 미만 나머지 포함)'));
-    var copy = el('button', null, '금액 복사');
-    copy.onclick = function () {
-      navigator.clipboard && navigator.clipboard.writeText(String(s.pp)).then(function () { copy.textContent = '복사했어요'; });
-    };
-    head.appendChild(copy);
+    head.appendChild(payButtons(s.pp));
   } else {
     head.appendChild(el('div', null, '총비용'));
     head.appendChild(el('div', 'big', won(s.tc)));

@@ -205,9 +205,13 @@ node tools/demo/make_video.mjs out/demo out/demo/gachiga_demo.mp4
 2. `gradle.properties`에 주소를 넣는다: `gachiga.settleUrl=https://<계정>.github.io/<저장소>/web/settle/`
 3. 다시 빌드한다. 주소가 비어 있으면 QR에 정산 내용을 글자로 담는다 (폰 카메라로 찍으면 글로 보인다).
 
+### 송금 버튼
+
+웹 정산서에는 "금액 복사", "토스 열기", "카카오페이 열기" 버튼이 있다. 금액을 복사한 뒤 송금 앱을 열어 주고, 받는 사람은 앱에서 직접 고른다. 계좌나 연락처는 QR에 담지 않는다(누가 찍어도 개인 정보가 드러나지 않게). 송금 앱을 여는 주소(`supertoss://`, `kakaotalk://`)는 실제 폰에서 아직 확인하지 않았다.
+
 ## APK
 
-- 위치: [`apk/TeamGachiGa_GachiGa_release.apk`](apk/TeamGachiGa_GachiGa_release.apk) (v0.1.0, release 서명, 약 47MB)
+- 위치: [`apk/TeamGachiGa_GachiGa_release.apk`](apk/TeamGachiGa_GachiGa_release.apk) (v0.2.0, release 서명, 약 49MB. 같이 가기·함께 쉬기·일차 나누기 포함)
 - 설치: Pleos 에뮬레이터를 켠 뒤 APK 파일을 에뮬레이터 창에 끌어다 놓거나, `adb install apk/TeamGachiGa_GachiGa_release.apk`
   - 같은 패키지의 debug 빌드가 이미 깔려 있으면 서명이 달라 설치가 거부된다. 먼저 `adb uninstall com.gachiga.app`
 - 팀명이 정해지면 파일 이름만 바꾼다 (다시 빌드할 필요 없음).

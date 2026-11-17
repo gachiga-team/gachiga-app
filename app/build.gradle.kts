@@ -25,8 +25,8 @@ android {
         applicationId = "com.gachiga.app" // 같이가 (GachiGa)
         minSdk = 28                       // 차량 보안 요건
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         // QR 정산서 웹 페이지 주소 (N5). GitHub Pages 주소가 정해지면 gradle.properties의 gachiga.settleUrl에 넣는다.
         // 비어 있으면 QR에 정산 내용을 글자로 담는다.
