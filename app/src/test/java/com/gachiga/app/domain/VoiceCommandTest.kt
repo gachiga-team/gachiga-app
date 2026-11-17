@@ -48,6 +48,7 @@ class VoiceCommandTest {
         assertEquals(VoiceCommand.JoinGroup(null), parse("그룹 참여"))
         assertEquals(VoiceCommand.LeaveGroup, parse("그룹 나가기"))
         assertEquals(VoiceCommand.GroupStatus, parse("일행 어디야"))
+        assertEquals(VoiceCommand.DaySummary, parse("오늘 요약해 줘"))
     }
 
     @Test

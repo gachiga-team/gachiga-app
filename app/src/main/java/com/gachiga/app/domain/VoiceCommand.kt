@@ -23,6 +23,8 @@ sealed interface VoiceCommand {
     data object GroupStatus : VoiceCommand
     /** "메시지 다음 휴게소에서 쉬자", "일행에게 ...". 일행 차량에서 음성으로 읽어 준다. */
     data class SendMessage(val text: String) : VoiceCommand
+    /** "오늘 요약", "하루 요약" */
+    data object DaySummary : VoiceCommand
     data object Yes : VoiceCommand
     data object No : VoiceCommand
     data object Unknown : VoiceCommand
@@ -46,6 +48,7 @@ sealed interface VoiceCommand {
                 s.contains("그룹만들") || s.contains("그룹생성") || s.contains("같이가기") -> CreateGroup
                 s.contains("그룹참여") || s.contains("그룹참가") || s.contains("그룹들어") -> JoinGroup(groupCodeOf(s))
                 s.contains("그룹나가") || s.contains("그룹해제") -> LeaveGroup
+                s.contains("오늘요약") || s.contains("하루요약") || s.contains("오늘얼마") -> DaySummary
                 s.contains("일행어디") || s.contains("일행위치") || s.contains("어디쯤") -> GroupStatus
                 s.contains("다시시작") || s.contains("재개") || s.contains("다시기록") -> Resume
                 s.contains("시작") && (s.contains("여행") || s.contains("출발")) -> StartTrip(headcountOf(s))

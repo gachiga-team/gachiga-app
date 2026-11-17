@@ -303,6 +303,28 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    // ---- 일차 (여러 날 여행) ----
+
+    init {
+        // 오래 세워 둔 뒤 다시 출발하면 다음 일차가 시작된다. 지난 일차를 한 문장으로 요약해 준다.
+        viewModelScope.launch {
+            recorder.dayStarted.collect { day ->
+                val last = recorder.live.value?.days()?.find { it.index == day - 1 }
+                announce(
+                    "${day}일차를 시작해요." + if (last == null) "" else
+                        " ${last.index}일차에는 %.0f킬로미터를 달렸고 비용은 ${won(last.totalCostWon)}이었어요.".format(last.distanceKm),
+                )
+            }
+        }
+    }
+
+    /** "오늘 요약"에 답한다. */
+    private fun daySummarySpoken(live: LiveTrip): String {
+        val today = live.days().lastOrNull() ?: return "아직 기록이 없어요."
+        val head = if (today.index > 1) "오늘은 ${today.index}일차예요. " else ""
+        return head + "오늘 %.0f킬로미터를 달렸고 비용은 ${won(today.totalCostWon)}이에요.".format(today.distanceKm)
+    }
+
     // ---- 같이 가기 (컨보이 모드) ----
 
     val convoy: StateFlow<ConvoyState?> = container.convoy.state
@@ -596,6 +618,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                 if (pending != null) applyRefuelAmount(pending.refuel.id, command.amountWon.toInt())
                 else voice.speak("어떤 비용인지 함께 말해 주세요. 예를 들면 통행료 삼천 원.")
             }
+            VoiceCommand.DaySummary -> voice.speak(state.value.live?.let { daySummarySpoken(it) } ?: "진행 중인 여행이 없어요.")
             VoiceCommand.CreateGroup -> createGroup()
             is VoiceCommand.JoinGroup -> joinGroup(command.code)
             VoiceCommand.LeaveGroup -> leaveGroup()

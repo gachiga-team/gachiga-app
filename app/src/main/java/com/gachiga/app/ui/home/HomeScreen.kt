@@ -154,7 +154,7 @@ private fun DrivingModeScreen(state: HomeUiState, convoyLine: String?, onClick: 
             if (state.demoMode) DemoBadge()
             if (live != null) {
                 Text(
-                    if (live.isPaused) "일시정지 중" else "${goingTo(live.trip.destinationName)} · ${live.trip.headcount}명",
+                    if (live.isPaused) "일시정지 중" else "${dayPrefix(live.dayIndex)}${goingTo(live.trip.destinationName)} · ${live.trip.headcount}명",
                     style = MaterialTheme.typography.headlineMedium,
                     color = if (live.isPaused) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                 )
@@ -256,7 +256,8 @@ private fun TripScreen(state: HomeUiState, live: LiveTrip, convoy: ConvoyState?,
     ) {
         if (state.demoMode) DemoBadge()
         Text(
-            if (live.isPaused) "일시정지 중 · ${live.trip.headcount}명" else "${goingTo(live.trip.destinationName)} · ${live.trip.headcount}명",
+            if (live.isPaused) "${dayPrefix(live.dayIndex)}일시정지 중 · ${live.trip.headcount}명"
+            else "${dayPrefix(live.dayIndex)}${goingTo(live.trip.destinationName)} · ${live.trip.headcount}명",
             style = MaterialTheme.typography.headlineMedium,
             color = if (live.isPaused) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
         )

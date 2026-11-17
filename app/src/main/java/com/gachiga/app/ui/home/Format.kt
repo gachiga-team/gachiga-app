@@ -28,5 +28,8 @@ fun Expense.label(): String =
 fun tripTitle(destination: String?): String = destination?.takeIf { it.isNotBlank() }?.let { "$it 여행" } ?: "여행"
 
 /** 주행 중 머리말: 목적지가 있으면 "강릉역으로 가는 중", 없으면 "여행 중". */
+/** 여러 날 여행이면 머리말 앞에 "2일차 · "를 붙인다. */
+fun dayPrefix(dayIndex: Int): String = if (dayIndex > 1) "${dayIndex}일차 · " else ""
+
 fun goingTo(destination: String?): String =
     destination?.takeIf { it.isNotBlank() }?.let { "${KoreanJosa.withEuro(it)} 가는 중" } ?: "여행 중"

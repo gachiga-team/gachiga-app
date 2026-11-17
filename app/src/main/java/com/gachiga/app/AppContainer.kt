@@ -9,6 +9,7 @@ import com.gachiga.app.data.location.PleosLocationSource
 import com.gachiga.app.data.navi.NaviSource
 import com.gachiga.app.data.settings.VehicleSettingsRepository
 import com.gachiga.app.data.trip.AppDatabase
+import com.gachiga.app.data.trip.LongStore
 import com.gachiga.app.data.trip.TripHistory
 import com.gachiga.app.data.trip.TripRecorder
 import com.gachiga.app.data.vehicle.DemoVehicleDataSource
@@ -20,6 +21,7 @@ import com.gachiga.app.data.voice.PleosVoiceIO
 import com.gachiga.app.data.voice.VoiceIO
 import com.gachiga.app.domain.RestArea
 import com.gachiga.app.domain.RestAreas
+import com.gachiga.app.domain.TripDays
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,7 +54,12 @@ class AppContainer(context: Context) {
     val uxRestrictions = UxRestrictionSource(appContext)
 
     val recorder: TripRecorder by lazy {
-        TripRecorder(database.tripDao(), settings, ::vehicleSource, appScope)
+        TripRecorder(
+            database.tripDao(), settings, ::vehicleSource, appScope,
+            parkedSince = LongStore.Prefs(appContext.getSharedPreferences("trip_state", Context.MODE_PRIVATE), "parked_since"),
+            // debug는 시연·확인용으로 3분만 세워도 다음 일차로 넘긴다. release는 4시간.
+            longParkMs = if (BuildConfig.DEBUG) 3 * 60_000L else TripDays.LONG_PARK_MS,
+        )
     }
 
     val demoLocation = DemoLocationSource()

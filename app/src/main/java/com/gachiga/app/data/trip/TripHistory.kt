@@ -1,6 +1,7 @@
 package com.gachiga.app.data.trip
 
 import com.gachiga.app.domain.Settlement
+import com.gachiga.app.domain.TripDays
 import kotlinx.coroutines.flow.first
 
 /** 끝난 여행 하나와 그 정산 결과 (spec.md F6). */
@@ -9,6 +10,8 @@ data class TripDetail(
     val refuels: List<Refuel>,
     val expenses: List<Expense>,
     val result: Settlement.Result,
+    /** 일차별 거리와 비용. 하루짜리 여행이면 하나뿐이다. */
+    val days: List<TripDays.Day> = emptyList(),
 ) {
     val unpaidRefuels: Int get() = refuels.count { it.amountWon == null }
 }
@@ -47,6 +50,7 @@ class TripHistory(private val dao: TripDao) {
         val segments = dao.segments(trip.id)
         val refuels = dao.refuels(trip.id)
         val expenses = dao.expenses(trip.id)
-        return TripDetail(trip, refuels, expenses, settlementOf(trip, segments, refuels, expenses))
+        val result = settlementOf(trip, segments, refuels, expenses)
+        return TripDetail(trip, refuels, expenses, result, daysOf(trip, segments, expenses, result.unitPrice))
     }
 }

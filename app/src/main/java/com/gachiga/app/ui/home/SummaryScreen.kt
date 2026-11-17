@@ -110,6 +110,16 @@ fun SummaryScreen(
         r.efficiency?.let { Row2(if (type.unit() == "kWh") "전비" else "연비", "%.1f km/%s".format(it, type.unit()), null) }
         HorizontalDivider()
 
+        // 일차별 (여러 날 여행일 때만)
+        if (detail.days.size > 1) {
+            Text("일차별", style = MaterialTheme.typography.headlineMedium)
+            detail.days.forEach { d ->
+                Row2("${d.index}일차 · ${dayOf(d.startedAt)}", km(d.distanceKm), "${type.label()} ${won(d.energyCostWon)} + 기타 ${won(d.otherCostWon)} = ${won(d.totalCostWon)}")
+            }
+            Text("오래 세워 둔 뒤 다시 출발하면 다음 일차로 나눠요. 날마다 반올림해서 합계가 총비용과 몇 원 다를 수 있어요.", style = MaterialTheme.typography.bodyMedium, color = SubtleText)
+            HorizontalDivider()
+        }
+
         // 3. 주유·충전 내역 (금액 고치기)
         Text("$word 내역", style = MaterialTheme.typography.headlineMedium)
         if (detail.refuels.isEmpty()) Text("없음", style = MaterialTheme.typography.bodyMedium, color = SubtleText)
@@ -235,5 +245,7 @@ private fun dateRange(start: Long, end: Long?): String {
     val hm = SimpleDateFormat("HH:mm", Locale.KOREA)
     return day.format(Date(start)) + (end?.let { " ~ " + hm.format(Date(it)) } ?: "")
 }
+
+private fun dayOf(ms: Long): String = SimpleDateFormat("M월 d일", Locale.KOREA).format(Date(ms))
 
 private fun time(ms: Long): String = SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(ms))

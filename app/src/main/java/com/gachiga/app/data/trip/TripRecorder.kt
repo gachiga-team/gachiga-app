@@ -10,6 +10,7 @@ import com.gachiga.app.domain.MotionState
 import com.gachiga.app.domain.RefuelEvent
 import com.gachiga.app.domain.RefuelSource
 import com.gachiga.app.domain.Settlement
+import com.gachiga.app.domain.TripDays
 import com.gachiga.app.domain.TripStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -48,6 +49,9 @@ class TripRecorder(
     private val sourceFor: (demoMode: Boolean) -> VehicleDataSource,
     private val scope: CoroutineScope,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** 정차를 시작한 시각(0이면 없음). 밤새 앱이 꺼져도 남아 있어야 해서 밖에 저장한다. */
+    private val parkedSince: LongStore = LongStore.InMemory(),
+    private val longParkMs: Long = TripDays.LONG_PARK_MS,
 ) {
     private val mutex = Mutex()
     private val tracker = EnergyTracker()
@@ -57,6 +61,11 @@ class TripRecorder(
 
     private val _motion = MutableStateFlow(MotionState.UNKNOWN)
     private val _refuelDetected = MutableSharedFlow<Refuel>(extraBufferCapacity = 4)
+
+    private val _dayStarted = MutableSharedFlow<Int>(extraBufferCapacity = 2)
+
+    /** 새 일차가 시작됐다 (값은 새 일차 번호). 화면은 이걸 받아 지난 일차 요약을 말해 준다. */
+    val dayStarted: SharedFlow<Int> = _dayStarted.asSharedFlow()
 
     /** 새로 감지한 주유·충전. 화면은 이걸 받아 금액을 묻는다. */
     val refuelDetected: SharedFlow<Refuel> = _refuelDetected.asSharedFlow()
@@ -127,6 +136,7 @@ class TripRecorder(
         _live.value = LiveTrip(trip.copy(id = tripId), listOf(segment.copy(id = segmentId)), emptyList(), emptyList())
         lastOdometerKm = odometer
         lastEnergyPercent = energy
+        parkedSince.set(0)
         Log.i(TAG, "started trip $tripId: ${headcount}명, $odometer km, $energy% ($energyType)")
         return StartResult.Started
     }
@@ -144,11 +154,17 @@ class TripRecorder(
         val live = _live.value ?: return@withLock
         if (live.trip.status != TripStatus.PAUSED) return@withLock
         val start = lastOdometerKm ?: live.segments.lastOrNull()?.endOdometerKm ?: live.trip.startOdometerKm
-        val segment = Segment(tripId = live.trip.id, startedAt = clock(), startOdometerKm = start, endOdometerKm = start)
+        // 일시정지한 채 오래 있다가 다시 시작하면 다음 일차로 넘긴다.
+        val now = clock()
+        val newDay = TripDays.startsNewDay(live.segments.lastOrNull()?.endedAt, now, dayDistanceKm(live), longParkMs)
+        val day = live.dayIndex + if (newDay) 1 else 0
+        val segment = Segment(tripId = live.trip.id, dayIndex = day, startedAt = now, startOdometerKm = start, endOdometerKm = start)
         val id = dao.insertSegment(segment)
         val trip = live.trip.copy(status = TripStatus.ACTIVE)
         dao.updateTrip(trip)
         _live.value = live.copy(trip = trip, segments = live.segments + segment.copy(id = id))
+        parkedSince.set(0)
+        if (newDay) _dayStarted.tryEmit(day)
     }
 
     /** 정차 중에만 종료할 수 있다 (F5). 종료한 여행의 id를 돌려준다. */
@@ -165,6 +181,7 @@ class TripRecorder(
             )
             dao.updateTrip(trip)
             _live.value = null
+            parkedSince.set(0)
             Log.i(TAG, "ended trip ${trip.id}")
             trip.id
         }
@@ -269,12 +286,41 @@ class TripRecorder(
             is Event.Motion -> {
                 _motion.value = event.state
                 tracker.onMotion(event.state)?.let { recordRefuel(it) }
+                when (event.state) {
+                    MotionState.PARKED -> if (parkedSince.get() == 0L) parkedSince.set(now)
+                    MotionState.DRIVING -> {
+                        startNewDayIfLongParked(now)
+                        parkedSince.set(0)
+                    }
+                    MotionState.UNKNOWN -> Unit
+                }
             }
             Event.Tick -> {
                 tracker.tick(now)?.let { recordRefuel(it) }
                 if (dirty && now - lastFlushAt >= FLUSH_MS) flush()
             }
         }
+    }
+
+    private fun dayDistanceKm(live: LiveTrip): Double =
+        live.segments.filter { it.dayIndex == live.dayIndex }.sumOf { (it.endOdometerKm ?: it.startOdometerKm) - it.startOdometerKm }
+
+    /**
+     * 오래 세워 둔 뒤 다시 출발했으면 구간을 닫고 다음 일차의 구간을 연다.
+     * 시동 상태를 읽을 수 없어서 정차 시간으로 판단한다 (TripDays).
+     */
+    private suspend fun startNewDayIfLongParked(now: Long) {
+        val live = _live.value ?: return
+        if (live.trip.status != TripStatus.ACTIVE) return // 일시정지 중이면 다시 시작할 때 판단한다
+        if (!TripDays.startsNewDay(parkedSince.get().takeIf { it > 0 }, now, dayDistanceKm(live), longParkMs)) return
+        val day = live.dayIndex + 1
+        val closed = closeOpenSegment(live)
+        val start = lastOdometerKm ?: closed.segments.lastOrNull()?.endOdometerKm ?: live.trip.startOdometerKm
+        val segment = Segment(tripId = live.trip.id, dayIndex = day, startedAt = now, startOdometerKm = start, endOdometerKm = start)
+        val id = dao.insertSegment(segment)
+        _live.value = closed.copy(segments = closed.segments + segment.copy(id = id))
+        Log.i(TAG, "day $day started")
+        _dayStarted.tryEmit(day)
     }
 
     private fun updateOpenSegment(change: (Segment) -> Segment) {
